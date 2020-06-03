@@ -60,14 +60,19 @@ static void * handleTraffic(void * arg)
                 
                 if (rsp->flag == 1)
                 {
-                    unsigned long plainLen = 4*datalen;
+                    unsigned long plainLen = 65535;
                     char * plain = (char *)malloc(plainLen + 1);
-                    int ret = uncompress(plain, &plainLen, rsp->data, rsp->datalen);
+                    int ret = uncompress(plain, &plainLen, rsp->data, datalen);
                     if (ret == Z_OK)
                     {
                         plain[plainLen] = 0;
                         printf(">>%s\n", plain);
                     }
+                    else
+                    {
+                        printf("uncompress %d, rsplen %d\n", ret, datalen);
+                    }
+                    free(plain);
                 }
                 else
                 {

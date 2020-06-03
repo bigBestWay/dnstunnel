@@ -198,6 +198,13 @@ int processQuery(const char * payload, int len, struct FragmentCtrl * frag, char
     {
         char tmp[255] = {0};
         char * p = (char *)(head + 1);
+        struct QUESTION * question = (struct QUESTION *)(p + strlen(p) + 1);
+        unsigned short qtype = ntohs(question->qtype);
+        if (qtype != QUERY_A && qtype != QUERY_DNSKEY)
+        {
+            return -1;
+        }
+        
         for(char i = 0; i < p[0]; ++i)
         {
             tmp[i] = p[i+1];

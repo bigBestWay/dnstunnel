@@ -283,15 +283,14 @@ int server_recv(int fd, char * buf, int len, char (*addr)[16])
 
         if(IS_FRAGMENT_ARRIVED(frag.seqId))
         {
-            printf("seqid %d duplicate.\n", frag.seqId);
+            //printf("seqid %d duplicate.\n", frag.seqId);
             DataBuffer query = {querr_buffer, queryLen};
             if(server_reply_ack_with_data(fd, &query, 0, &frag, addr) <= 0)
                 return ret;
         }
         else
         {
-            //dumpHex(recvBuf, pureLen);        
-            recvBuf += pureLen;
+            //dumpHex(recvBuf, pureLen);                
             SET_FRAGMENT_ARRIVED(frag.seqId);
 
             printf("seqid = %d, end=%d\n", frag.seqId, frag.end);
@@ -300,12 +299,16 @@ int server_recv(int fd, char * buf, int len, char (*addr)[16])
                 return ret;
             printf("sent ack of %d\n", frag.seqId);
             //报文是客户端顺序发送的，因此接收到最后一个包时要校验与上一个包是不是顺序下来的，防止上次会话的包重传产生错误
-            if (frag.end && (lastSeqidAck == 0 || frag.seqId == lastSeqidAck + 1))
+            if(frag.seqId == lastSeqidAck + 1 || lastSeqidAck == 0)
             {
-                return recvBuf - buf;
+                recvBuf += pureLen;
+                lastSeqidAck = frag.seqId;
+                if (frag.end)
+                {
+                    return recvBuf - buf;
+                }
+                
             }
-
-            lastSeqidAck = frag.seqId;
         }
     }while (1);
 
@@ -343,23 +346,26 @@ int server_send(int fd, const char * p, int len, char (*addr)[16])
             continue;
         }
 
+        DataBuffer query = {recvBuf, recvLen};
+
         struct CmdReq * cmd = (struct CmdReq *)payload;
         if(cmd->code != CLIENT_CMD_HELLO)
-            continue;
+            goto ack;
         //收到了hello，校验
         struct Hello * hello = (struct Hello *)cmd->data;
         cmd->datalen = ntohs(cmd->datalen);
         if (cmd->datalen != sizeof(struct Hello))
         {
-            continue;
+            goto ack;
         }
         hello->key = ntohs(hello->key);//TODO 加密
         if(hello->msg[0] != 'H' || hello->msg[1] != 'A' || hello->msg[2] != 'L' || hello->msg[3] != 'O')
-            continue;
+            goto ack;
 
-        DataBuffer query = {recvBuf, recvLen};
         DataBuffer serverData = {p, len};
         return server_reply_ack_with_data(fd, &query, &serverData, &frag, addr);
+    ack:
+        return server_reply_ack_with_data(fd, &query, 0, &frag, addr);
     }
     while(1);
 
