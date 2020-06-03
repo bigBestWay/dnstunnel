@@ -1,6 +1,12 @@
 #ifndef _UTIL_H_
 #define _UTIL_H_
 
+typedef struct
+{
+    const char * ptr;
+    int len;
+}DataBuffer;
+
 void delay(long sec, long usec);
 
 void getRand(void * p, int size);

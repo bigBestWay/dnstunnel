@@ -2,9 +2,17 @@
 #define _CMD_H_
 
 #pragma pack(push, 1)
-struct Cmd
+struct CmdReq
 {
-    unsigned char code;
+    unsigned char code; //命令码
+    unsigned short sid; //会话id，一次输入输出称为一次会话
+    unsigned short datalen;
+    char data[0];
+};
+struct CmdRsp
+{
+    unsigned char flag; //0x1 压缩
+    unsigned short sid;
     unsigned short datalen;
     char data[0];
 };
@@ -43,6 +51,6 @@ enum ServerCmdId
     SERVER_CMD_END = 255
 };
 
-int handleCmd(const struct Cmd * cmd, char * out, int maxSize);
+int handleCmd(const struct CmdReq * cmd, char * out, int maxSize);
 
 #endif

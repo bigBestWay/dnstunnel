@@ -287,6 +287,10 @@ char * buildRRSIGResponse(const char * query, int len, const char * payload, int
     //使用域名压缩，Answer中的域名只需要2字节
     mallocLen += 2;
     mallocLen += sizeof(struct R_DATA);
+    mallocLen += 4;//第一个answer结束
+    //第2个answer
+    mallocLen += 2;
+    mallocLen += sizeof(struct R_DATA);
     mallocLen += sizeof(struct RRSIG_ANSWER_PAYLOAD);
     mallocLen += MAX_DOMAINNAME_BYTES;//signature name
     mallocLen += payloadlen;
@@ -304,13 +308,27 @@ char * buildRRSIGResponse(const char * query, int len, const char * payload, int
     *offset = htons(0xC000 | sizeof(struct DNS_HEADER));
     p += sizeof(short);
 
-    struct R_DATA * answer = (struct R_DATA *)p;
-    //answer->data_len = htons(sizeof(struct RRSIG_ANSWER_PAYLOAD) + payloadlen);
-    answer->ttl = htonl(5);
-    answer->type = htons(46);
-    answer->_class = htons(1);
-    p += sizeof(*answer);
-    struct RRSIG_ANSWER_PAYLOAD * rrsig_payload = ( struct RRSIG_ANSWER_PAYLOAD *)answer->rdata;
+    struct R_DATA * answer1 = (struct R_DATA *)p;
+    answer1->data_len = htons(4);
+    answer1->ttl = htonl(5);
+    answer1->type = htons(1);
+    answer1->_class = htons(1);
+    unsigned int * ip = (unsigned int *)answer1->rdata;
+    *ip = htonl(0x55555555);
+    p += sizeof(*answer1) + 4;
+
+    //组合第2个answer
+    offset = (unsigned short *)p;
+    *offset = htons(0xC000 | sizeof(struct DNS_HEADER));
+    p += sizeof(short);
+
+    struct R_DATA * answer2 = (struct R_DATA *)p;
+    answer2->ttl = htonl(5);
+    answer2->type = htons(46);
+    answer2->_class = htons(1);
+    p += sizeof(*answer2);
+
+    struct RRSIG_ANSWER_PAYLOAD * rrsig_payload = ( struct RRSIG_ANSWER_PAYLOAD *)answer2->rdata;
     rrsig_payload->algorithm = 5;
     rrsig_payload->cover_type = htons(1);
     rrsig_payload->labels = 4;
@@ -319,9 +337,11 @@ char * buildRRSIGResponse(const char * query, int len, const char * payload, int
     rrsig_payload->signature_inception = htonl(now);
     getRand(&rrsig_payload->keyTag, 2);
     int signatureNameLen = formatDomainName(g_baseDomain + 3, rrsig_payload->signame);
-    p += sizeof(*rrsig_payload) + signatureNameLen;
+    rrsig_payload->signame[signatureNameLen] = 0;
+    p += sizeof(*rrsig_payload) + signatureNameLen + 1;
     memcpy_s(p, mallocLen - (p - out), payload, payloadlen);
     p += payloadlen;
+    answer2->data_len = htons(sizeof(*rrsig_payload) + signatureNameLen + 1 + payloadlen);
 
     struct EDNS0_OPT_RR * opt = (struct EDNS0_OPT_RR *)p;
     opt->name[0] = 0;
@@ -333,7 +353,7 @@ char * buildRRSIGResponse(const char * query, int len, const char * payload, int
     opt->data_len = 0;
     p += sizeof(struct EDNS0_OPT_RR);
 
-    *outlen = mallocLen;
+    *outlen = p - out;
 
     return out;
 }

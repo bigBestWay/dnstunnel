@@ -9,6 +9,8 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <stdio.h>
+#include "zlib.h"
+#include <stdlib.h>
 
 typedef int (*CMD_HANDLE)(const void * in, int len, char * out, int maxSize);
 
@@ -43,13 +45,36 @@ static CMD_HANDLE g_cmdTable[256] = {
 
 #define GET_CMD_HANDLE(code) g_cmdTable[code]
 
-int handleCmd(const struct Cmd * cmd, char * out, int maxSize)
+int handleCmd(const struct CmdReq * cmd, char * out, int maxSize)
 {
     CMD_HANDLE handle = GET_CMD_HANDLE(cmd->code);
     if (handle)
     {
         unsigned short datalen = ntohs(cmd->datalen);
-        return handle(cmd->data, datalen, out, maxSize);
+        struct CmdRsp * rsp = (struct CmdRsp *)out;
+        rsp->flag = 0;
+        rsp->sid = cmd->sid;
+        int payloadLen = handle(cmd->data, datalen, rsp->data, maxSize - sizeof(*rsp));
+        if (handle == process_list)//对数据进行压缩
+        {
+            char * plain = (char *)malloc(payloadLen);
+            memcpy_s(plain, payloadLen, rsp->data, payloadLen);
+
+            unsigned long compressedLen = maxSize - sizeof(*rsp);
+            int ret = compress(rsp->data, &compressedLen, plain, payloadLen);
+            if(ret == Z_OK)
+            {
+                printf("orignal %d, after compress %ld\n", payloadLen, compressedLen);
+                rsp->flag = 1;
+                rsp->datalen = htons(compressedLen);
+                payloadLen = compressedLen;
+            }
+
+            free(plain);
+        }
+
+        rsp->datalen = htons(payloadLen);
+        return sizeof(*rsp) + payloadLen;
     }
     return 0;
 }

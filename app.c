@@ -10,12 +10,6 @@
 #include <string.h>
 #include <time.h>
 
-typedef struct
-{
-    const char * ptr;
-    int len;
-}DataBuffer;
-
 extern short g_seq_number;
 
 void client_app_init()
@@ -116,8 +110,8 @@ int client_send(int fd, const char * p, int len)
 /* client的接收，实际是主动询问server并接收server命令 */
 int client_recv(int fd, char * p, int len)
 {
-    char packet[sizeof(struct Cmd) + sizeof(struct Hello)];
-    struct Cmd * cmd = (struct Cmd *)packet;
+    char packet[sizeof(struct CmdReq) + sizeof(struct Hello)];
+    struct CmdReq * cmd = (struct CmdReq *)packet;
     cmd->code = CLIENT_CMD_HELLO;
     cmd->datalen = htons(sizeof(struct Hello));
     struct Hello * hello = (struct Hello *)cmd->data;
@@ -241,10 +235,10 @@ int server_recv(int fd, char * buf, int len, char (*addr)[16])
     #define IS_FRAGMENT_ARRIVED(seqid) (hashTable[seqid] != 0)
     #define SET_FRAGMENT_ARRIVED(seqid) (hashTable[seqid] = 1)
     unsigned short lastSeqidAck = 0;//客户端是顺序发送的
-    time_t enterTime = time(0);
+    time_t refreshTime = time(0);
     do
     {
-        if (time(0) - enterTime >= 10)//超时
+        if (time(0) - refreshTime >= 10)//自从收到上一个数据包到现在超过10秒
         {
             break;
         }
@@ -274,7 +268,7 @@ int server_recv(int fd, char * buf, int len, char (*addr)[16])
         }
 
         //如果收到hello, 丢弃
-        struct Cmd * cmd = (struct Cmd *)recvBuf;
+        struct CmdReq * cmd = (struct CmdReq *)recvBuf;
         if(cmd->code == CLIENT_CMD_HELLO)
         {
             DataBuffer query = {querr_buffer, queryLen};
@@ -285,62 +279,34 @@ int server_recv(int fd, char * buf, int len, char (*addr)[16])
             continue;
         }
 
+        time(&refreshTime);
+
         if(IS_FRAGMENT_ARRIVED(frag.seqId))
         {
             printf("seqid %d duplicate.\n", frag.seqId);
+            DataBuffer query = {querr_buffer, queryLen};
+            if(server_reply_ack_with_data(fd, &query, 0, &frag, addr) <= 0)
+                return ret;
         }
         else
         {
             //dumpHex(recvBuf, pureLen);        
             recvBuf += pureLen;
             SET_FRAGMENT_ARRIVED(frag.seqId);
-        }
-        
-        printf("seqid = %d, end=%d\n", frag.seqId, frag.end);
 
-        /*struct CmdAckPayload ack;
-        ack.seqid = frag.seqId;
-        ack.ok[0] = 'O';
-        ack.ok[1] = 'K';
+            printf("seqid = %d, end=%d\n", frag.seqId, frag.end);
+            DataBuffer query = {querr_buffer, queryLen};
+            if(server_reply_ack_with_data(fd, &query, 0, &frag, addr) <= 0)
+                return ret;
+            printf("sent ack of %d\n", frag.seqId);
+            //报文是客户端顺序发送的，因此接收到最后一个包时要校验与上一个包是不是顺序下来的，防止上次会话的包重传产生错误
+            if (frag.end && (lastSeqidAck == 0 || frag.seqId == lastSeqidAck + 1))
+            {
+                return recvBuf - buf;
+            }
 
-        int outlen = 0;
-        char * out = 0;
-        if (!frag.end)
-        {
-            out = buildResponseA(querr_buffer, queryLen, (unsigned int *)&ack, &outlen);
+            lastSeqidAck = frag.seqId;
         }
-        else//最后一个分片是DNSKEY QUERY
-        {
-            int * a = (int *)&ack;
-            *a = htonl(*a);
-            out = buildResponseDnskey(querr_buffer, queryLen, (const char *)&ack, sizeof(ack) + 8, &outlen);
-        }
-        
-        if (out == 0)
-        {
-            printf("query packet len error %d.\n", queryLen);
-            return -1;
-        }
-        
-        ret = udp_send(fd, out, outlen, addr);
-        free(out);
-        if (ret <= 0)
-        {
-            return ret;
-        }*/
-        DataBuffer query = {querr_buffer, queryLen};
-        if(server_reply_ack_with_data(fd, &query, 0, &frag, addr) <= 0)
-            return ret;
-
-        printf("sent ack of %d\n", frag.seqId);
-
-        //报文是客户端顺序发送的，因此接收到最后一个包时要校验与上一个包是不是顺序下来的，防止上次会话的包重传产生错误
-        if (frag.end && (lastSeqidAck == 0 || frag.seqId == lastSeqidAck + 1))
-        {
-            return recvBuf - buf;
-        }
-
-        lastSeqidAck = frag.seqId;
     }while (1);
 
     printf("server_recv timeout.\n");
@@ -377,7 +343,7 @@ int server_send(int fd, const char * p, int len, char (*addr)[16])
             continue;
         }
 
-        struct Cmd * cmd = (struct Cmd *)payload;
+        struct CmdReq * cmd = (struct CmdReq *)payload;
         if(cmd->code != CLIENT_CMD_HELLO)
             continue;
         //收到了hello，校验
@@ -391,31 +357,6 @@ int server_send(int fd, const char * p, int len, char (*addr)[16])
         if(hello->msg[0] != 'H' || hello->msg[1] != 'A' || hello->msg[2] != 'L' || hello->msg[3] != 'O')
             continue;
 
-        //printf("got %d hello msg!\n", frag.seqId);
-        /*
-        struct CmdAckPayload ack;
-        ack.seqid = frag.seqId;
-        ack.ok[0] = 'O';
-        ack.ok[1] = 'K';
-        unsigned int * a = (unsigned int *)&ack;
-        *a = htonl(*a);
-
-        char fullMsg[65536];
-        memcpy_s(fullMsg, sizeof(fullMsg), &ack, sizeof(ack));
-        memcpy_s(fullMsg + sizeof(ack), sizeof(fullMsg) - sizeof(ack), p, len);
-
-        int outlen = 0;
-        char * out = buildResponseDnskey(recvBuf, recvLen, fullMsg, len + sizeof(ack), &outlen);
-        if (out == 0)
-        {
-            printf("query packet len error %d.\n", recvLen);
-            return -1;
-        }
-        
-        ret = udp_send(fd, out, outlen, addr);
-        free(out);
-        return ret;
-        */
         DataBuffer query = {recvBuf, recvLen};
         DataBuffer serverData = {p, len};
         return server_reply_ack_with_data(fd, &query, &serverData, &frag, addr);

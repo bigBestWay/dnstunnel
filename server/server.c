@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <stdlib.h>
 #include "util.h"
 #include <unistd.h>
 #include "app.h"
@@ -7,6 +8,7 @@
 #include <string.h>
 #include <pthread.h>
 #include <ctype.h>
+#include "zlib.h"
 
 static void * handleTraffic(void * arg)
 {
@@ -22,6 +24,7 @@ static void * handleTraffic(void * arg)
         char data[65536];
         int datalen = 0;
         int hasData = wait_data(pipeFd, 0);
+        unsigned short sid = 0;
         if (hasData == 1)
         {
             datalen = read(pipeFd, data, sizeof(data));
@@ -30,6 +33,7 @@ static void * handleTraffic(void * arg)
                 perror("read");
                 continue;
             }
+            sid = ((struct CmdReq *)data)->sid;
         }
         else if(hasData == 0)
         {
@@ -45,11 +49,31 @@ static void * handleTraffic(void * arg)
 
         if (hasData)
         {
+        recv:
             ret = server_recv(fd, data, sizeof(data), addr);
             if(ret > 0)
             {
-                data[ret] = 0;
-                printf(">>%s\n", data);
+                struct CmdRsp * rsp = (struct CmdRsp *)data;
+                if(rsp->sid != sid)
+                    goto recv;
+                unsigned short datalen = ntohs(rsp->datalen);
+                
+                if (rsp->flag == 1)
+                {
+                    unsigned long plainLen = 4*datalen;
+                    char * plain = (char *)malloc(plainLen + 1);
+                    int ret = uncompress(plain, &plainLen, rsp->data, rsp->datalen);
+                    if (ret == Z_OK)
+                    {
+                        plain[plainLen] = 0;
+                        printf(">>%s\n", plain);
+                    }
+                }
+                else
+                {
+                    rsp->data[datalen] = 0;
+                    printf(">>%s\n", rsp->data);
+                }
             }
         }
     }
@@ -196,8 +220,9 @@ int main()
             continue;
         }
         
-        struct Cmd * cmd = (struct Cmd *)buffer;
+        struct CmdReq * cmd = (struct CmdReq *)buffer;
         cmd->code = code;
+        getRand(&cmd->sid, 2);
         char * p = cmd->data;
         unsigned short sendlen = sizeof(*cmd);
         for (int i = 1; i < argc1; i++)
@@ -219,6 +244,5 @@ int main()
         }
     }
     
-
     return 0;
 }

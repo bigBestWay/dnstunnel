@@ -1,7 +1,7 @@
 CPP      = g++
 CC       = gcc
 OBJ      = ../base64.o ../dns.o server.o ../util.o ../udp.o ../app.o
-LINKOBJ  = ../base64.o ../dns.o server.o ../util.o ../udp.o ../app.o
+LINKOBJ  = ../base64.o ../dns.o server.o ../util.o ../udp.o ../app.o /usr/lib/x86_64-linux-gnu/libz.a
 LIBS     = -lpthread
 INCS     = -I../
 CXXINCS  = 
