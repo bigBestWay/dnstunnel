@@ -16,4 +16,9 @@ void xor(const void * p, int len, unsigned short key);
 void dumpHex(const char * buff, int len);
 
 int memcpy_s(void *dst, int dstMax, const void *src, int srcLen);
+
+int writeFile(const char * path, const char * data, int len);
+
+int readFile(const char * path, char * out, int len);
+
 #endif

@@ -94,6 +94,7 @@ struct FragmentCtrl
 {
     unsigned short end:1;
     unsigned short seqId:15;
+    unsigned short clientID;
 };
 #pragma pack(pop) //恢复对齐状态
 
@@ -109,6 +110,8 @@ typedef enum
     QUERY_A = 1,
     QUERY_DNSKEY = 48
 }QUERY_TYPE;
+
+#define GET_NEXT_SEQID(id) (((short)id + 1) < 0? 0: ((short)id + 1))
 
 /** client 使用 **/
 struct QueryPkg * buildQuerys(const char * payload, int len, int * pkgNum);

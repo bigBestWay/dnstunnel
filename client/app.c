@@ -1,8 +1,8 @@
 #include "app.h"
-#include "udp.h"
-#include "dns.h"
-#include "cmd.h"
-#include "util.h"
+#include "../include/udp.h"
+#include "../include/dns.h"
+#include "../include/cmd.h"
+#include "../include/util.h"
 #include <stdio.h>
 #include <arpa/inet.h>
 #include <unistd.h>
@@ -11,11 +11,13 @@
 #include <time.h>
 
 extern short g_seq_number;
+extern short g_client_id;
 
 void client_app_init()
 {
     getRand(&g_seq_number, sizeof(g_seq_number));
     g_seq_number &= 0x7fff;
+    getRand(&g_client_id, sizeof(g_client_id));
 }
 
 static int check_ack(unsigned short seqId, const char * payload, int len)
@@ -121,6 +123,7 @@ int client_recv(int fd, char * p, int len)
     hello->msg[3] = 'O';
     getRand(&hello->key, sizeof(hello->key));
     hello->key = htons(hello->key);
+    hello->clientID = htons(g_client_id);
     int ret = -1;
 
     int pkgNum = 0;

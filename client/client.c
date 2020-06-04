@@ -1,8 +1,8 @@
 #include <stdio.h>
 #include "app.h"
-#include "util.h"
-#include "udp.h"
-#include "cmd.h"
+#include "../include/util.h"
+#include "../include/udp.h"
+#include "../include/cmd.h"
 /*
 * client端定时询问server，是否有命令需要执行
 */
@@ -48,16 +48,17 @@ int main()
         return 1;
     }
 
+    char req[65536];
+    char rsp[1024*1024];
     while(1){
-        char msg[65536] = {0};
-        int len = client_recv(fd, msg, sizeof(msg));
-        printf("recv %d %s\n", len, msg);
+        int len = client_recv(fd, req, sizeof(req));
+        printf("recv %d %s\n", len, req);
 
-        struct CmdReq * cmd = (struct CmdReq *)msg;
-        len = handleCmd(cmd, msg, sizeof(msg));
+        struct CmdReq * cmd = (struct CmdReq *)req;
+        len = handleCmd(cmd, rsp, sizeof(rsp));
         if (len > 0)
         {
-            len = client_send(fd, msg, len);
+            len = client_send(fd, rsp, len);
             printf("sent %d\n", len);
         }
 

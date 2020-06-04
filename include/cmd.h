@@ -9,11 +9,15 @@ struct CmdReq
     unsigned short datalen;
     char data[0];
 };
+
+#define CUSTOM_ERRNO 0xFF
+
 struct CmdRsp
 {
     unsigned char flag; //0x1 压缩
+    unsigned char errNo;//linux标准errno,如果为0xff表示自定义错误
     unsigned short sid;
-    unsigned short datalen;
+    unsigned int datalen;
     char data[0];
 };
 #pragma pack(pop)
@@ -23,7 +27,7 @@ struct Hello
 {
     char msg[4]; //固定为HALO
     unsigned short key;
-    char reserve[2];
+    unsigned short clientID;
 };
 
 struct CmdAckPayload

@@ -1,4 +1,3 @@
-#include "util.h"
 #include <time.h>
 #include <sched.h>
 #include <unistd.h>
@@ -7,6 +6,38 @@
 #include <fcntl.h>
 #include <string.h>
 #include <stdlib.h>
+
+int writeFile(const char * path, const char * data, int len)
+{
+    int fd = open(path, O_WRONLY | O_CREAT, S_IRWXU);
+    if(fd > 0)
+    {
+        int ret = write(fd, data, len);
+        close(fd);
+        return ret;
+    }
+    return fd;
+}
+
+int readFile(const char * path, char * out, int len)
+{
+    int fd = open(path, O_RDONLY);
+    if (fd > 0)
+    {
+        off_t fileSize = lseek(fd, 0, SEEK_END);
+        if (fileSize > len)
+        {
+            printf("file %s size %lu exceed size %d\n", path, fileSize, len);
+            close(fd);
+            return 0;
+        }
+        lseek(fd, 0, SEEK_SET);
+        int ret = read(fd, out, len);
+        close(fd);
+        return ret;
+    }
+    return fd;
+}
 
 void getRand(void * p, int size)
 {

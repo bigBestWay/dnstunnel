@@ -1,14 +1,34 @@
 #include "app.h"
-#include "udp.h"
-#include "dns.h"
-#include "cmd.h"
-#include "util.h"
+#include "../include/udp.h"
+#include "../include/dns.h"
+#include "../include/cmd.h"
+#include "../include/util.h"
 #include <stdio.h>
 #include <arpa/inet.h>
 #include <unistd.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+
+unsigned short g_client_id = 0;
+
+static int isHello(const char * payload)
+{
+    struct CmdReq * cmd = (struct CmdReq *)payload;
+    if(cmd->code != CLIENT_CMD_HELLO)
+        return 0;
+    //收到了hello，校验
+    struct Hello * hello = (struct Hello *)cmd->data;
+    cmd->datalen = ntohs(cmd->datalen);
+    if (cmd->datalen != sizeof(struct Hello))
+    {
+        return 0;
+    }
+    hello->key = ntohs(hello->key);//TODO 加密
+    if(hello->msg[0] != 'H' || hello->msg[1] != 'A' || hello->msg[2] != 'L' || hello->msg[3] != 'O')
+        return 0;
+    return 1;
+}
 
 /*
 * 如果data为NULL，只回复ACK；否则ACK附加DATA一起回复
@@ -38,9 +58,9 @@ static int server_reply_ack_with_data(int fd, const DataBuffer * query, const Da
             sendlen += serverData->len;
         }
 
-        if (sendlen <= 4)//数据小于等于4容易有BUG，增加一些无所谓
+        if (sendlen < 64)//数据小于等于64容易有BUG，增加一些无所谓
         {
-            sendlen += 8;
+            sendlen = 64;
         }
         
         out = buildResponseDnskey(query->ptr, query->len, buffer, sendlen, &outlen);
@@ -68,7 +88,7 @@ int server_recv(int fd, char * buf, int len, char (*addr)[16])
     char hashTable[32768] = {0};
     #define IS_FRAGMENT_ARRIVED(seqid) (hashTable[seqid] != 0)
     #define SET_FRAGMENT_ARRIVED(seqid) (hashTable[seqid] = 1)
-    unsigned short lastSeqidAck = 0;//客户端是顺序发送的
+    unsigned short lastSeqidAck = 0xffff;//客户端是顺序发送的
     time_t refreshTime = time(0);
     do
     {
@@ -102,8 +122,7 @@ int server_recv(int fd, char * buf, int len, char (*addr)[16])
         }
 
         //如果收到hello, 丢弃
-        struct CmdReq * cmd = (struct CmdReq *)recvBuf;
-        if(cmd->code == CLIENT_CMD_HELLO)
+        if(isHello(recvBuf))
         {
             DataBuffer query = {querr_buffer, queryLen};
             if(server_reply_ack_with_data(fd, &query, 0, &frag, addr) <= 0)
@@ -111,6 +130,20 @@ int server_recv(int fd, char * buf, int len, char (*addr)[16])
                 perror("server_reply_ack_with_data");
             }
             continue;
+        }
+
+        //校验clientid
+        if (g_client_id == 0)
+        {
+            printf("WTF?\n");
+        }
+        else
+        {
+            if (g_client_id != ntohs(frag.clientID))
+            {
+                printf("clientid %d already died, now %d\n", ntohs(frag.clientID), g_client_id);
+                continue;
+            }
         }
 
         time(&refreshTime);
@@ -124,24 +157,27 @@ int server_recv(int fd, char * buf, int len, char (*addr)[16])
         }
         else
         {
-            //dumpHex(recvBuf, pureLen);                
-            SET_FRAGMENT_ARRIVED(frag.seqId);
-
-            printf("seqid = %d, end=%d\n", frag.seqId, frag.end);
+            //dumpHex(recvBuf, pureLen);
+            const short expectedSeqId = GET_NEXT_SEQID(lastSeqidAck);
+            printf("seqid = %d, expect = %d, end=%d\n", frag.seqId, expectedSeqId, frag.end);
             DataBuffer query = {querr_buffer, queryLen};
             if(server_reply_ack_with_data(fd, &query, 0, &frag, addr) <= 0)
                 return ret;
             printf("sent ack of %d\n", frag.seqId);
             //报文是客户端顺序发送的，因此接收到最后一个包时要校验与上一个包是不是顺序下来的，防止上次会话的包重传产生错误
-            if(frag.seqId == lastSeqidAck + 1 || lastSeqidAck == 0)
+            if(frag.seqId == expectedSeqId || lastSeqidAck == 0xffff)
             {
+                SET_FRAGMENT_ARRIVED(frag.seqId);
                 recvBuf += pureLen;
                 lastSeqidAck = frag.seqId;
                 if (frag.end)
                 {
                     return recvBuf - buf;
                 }
-                
+            }
+            else
+            {
+                printf("drop seqid = %d\n", frag.seqId);
             }
         }
     }while (1);
@@ -183,19 +219,33 @@ int server_send(int fd, const char * p, int len, char (*addr)[16])
         DataBuffer query = {recvBuf, recvLen};
 
         struct CmdReq * cmd = (struct CmdReq *)payload;
-        if(cmd->code != CLIENT_CMD_HELLO)
-            goto ack;
-        //收到了hello，校验
-        struct Hello * hello = (struct Hello *)cmd->data;
-        cmd->datalen = ntohs(cmd->datalen);
-        if (cmd->datalen != sizeof(struct Hello))
+        if (!isHello(payload))
         {
             goto ack;
         }
-        hello->key = ntohs(hello->key);//TODO 加密
-        if(hello->msg[0] != 'H' || hello->msg[1] != 'A' || hello->msg[2] != 'L' || hello->msg[3] != 'O')
+        
+        struct Hello * hello = (struct Hello *)cmd->data;
+        //hello数据携带有clientid
+        unsigned short clientid = ntohs(hello->clientID);
+        if (ntohs(frag.clientID) != clientid)
+        {
+            printf("clientid %d already died, != %d\n", ntohs(frag.clientID), clientid);
             goto ack;
-
+        }
+        
+        if (g_client_id == 0)
+        {
+            g_client_id = clientid;
+        }
+        else
+        {
+            if (g_client_id != clientid)
+            {
+                printf("clientid %d already died, now %d\n", clientid, g_client_id);
+                goto ack;
+            }
+        }
+        
         DataBuffer serverData = {p, len};
         return server_reply_ack_with_data(fd, &query, &serverData, &frag, addr);
     ack:

@@ -1,6 +1,6 @@
-#include "cmd.h"
+#include "../include/cmd.h"
 #include "sys/types.h"
-#include "util.h"
+#include "../include/util.h"
 #include <pwd.h>
 #include <grp.h>
 #include <errno.h>
@@ -11,6 +11,9 @@
 #include <stdio.h>
 #include "zlib.h"
 #include <stdlib.h>
+#include <errno.h>
+
+static int s_errno = 0;
 
 typedef int (*CMD_HANDLE)(const void * in, int len, char * out, int maxSize);
 
@@ -55,36 +58,30 @@ int handleCmd(const struct CmdReq * cmd, char * out, int maxSize)
         rsp->flag = 0;
         rsp->sid = cmd->sid;
         int payloadLen = handle(cmd->data, datalen, rsp->data, maxSize - sizeof(*rsp));
-        if (handle == process_list)//对数据进行压缩
+        if (payloadLen > 0)
         {
-            char * plain = (char *)malloc(payloadLen);
-            memcpy_s(plain, payloadLen, rsp->data, payloadLen);
-
-            unsigned long compressedLen = maxSize - sizeof(*rsp);
-            int ret = compress2(rsp->data, &compressedLen, plain, payloadLen, 9);
-            if(ret == Z_OK)
+            if (handle == process_list || handle == process_download)//对数据进行压缩
             {
-                printf("orignal %d, after compress %ld\n", payloadLen, compressedLen);
-                rsp->flag = 1;
-                rsp->datalen = htons(compressedLen);
-                payloadLen = compressedLen;
+                char * plain = (char *)malloc(payloadLen);
+                memcpy_s(plain, payloadLen, rsp->data, payloadLen);
+
+                unsigned long compressedLen = maxSize - sizeof(*rsp);
+                int ret = compress2(rsp->data, &compressedLen, plain, payloadLen, 9);
+                if(ret == Z_OK)
+                {
+                    printf("orignal %d, after compress %ld\n", payloadLen, compressedLen);
+                    rsp->flag = 1;
+                    payloadLen = compressedLen;
+                }
+
+                free(plain);
             }
-
-            free(plain);
         }
-
-        rsp->datalen = htons(payloadLen);
+        rsp->errNo = s_errno;
+        rsp->datalen = htonl(payloadLen);
         return sizeof(*rsp) + payloadLen;
     }
     return 0;
-}
-
-static int reply_errMsg(char * out, int maxSize)
-{
-    char * errMsg = strerror(errno);
-    int len = strlen(errMsg);
-    memcpy_s(out, maxSize, errMsg, len + 1);
-    return len;
 }
 
 static int process_getuid(const void * in, int len, char * out, int maxSize)
@@ -94,8 +91,11 @@ static int process_getuid(const void * in, int len, char * out, int maxSize)
     struct passwd * my_info = getpwuid(uid);
     struct group * grp_info = getgrgid(my_info->pw_gid);
     if(my_info == 0 || grp_info == 0)
+    {
+        s_errno = errno;
         return 0;
-
+    }
+    s_errno = 0;
     const char * fmt = "uid=%d(%s) gid=%d(%s)";
     return snprintf(out, maxSize, fmt, my_info->pw_uid, my_info->pw_name, my_info->pw_gid, grp_info->gr_name);
 }
@@ -107,7 +107,23 @@ static int process_upload(const void * in, int len, char * out, int maxSize)
 
 static int process_download(const void * in, int len, char * out, int maxSize)
 {
-    return 0;
+    const char * remoteFile = (const char *)in;
+    int ret = readFile(remoteFile, out, maxSize);
+    if (ret < 0)
+    {
+        s_errno = errno;
+        return 0;
+    }
+    else if (ret == 0)
+    {
+        s_errno = CUSTOM_ERRNO;
+        const char errMsg[] = "File size exceed 1M.";
+        int len = sizeof(errMsg);
+        memcpy_s(out, maxSize, errMsg, len);
+        return len;
+    }
+    s_errno = 0;
+    return ret;
 }
 static int process_execute(const void * in, int len, char * out, int maxSize)
 {
@@ -131,14 +147,12 @@ static int process_mkdir(const void * in, int len, char * out, int maxSize)
     const char * dir = (const char *)in;
     if (mkdir(dir, S_IRUSR | S_IWUSR | S_IXUSR) == 0)
     {
+        s_errno = 0;
         #define SUCCESS_LEN 8
         memcpy_s(out, maxSize, "Success", SUCCESS_LEN);
         return SUCCESS_LEN;
     }
-    else
-    {
-        return reply_errMsg(out, maxSize);
-    }
+    s_errno = errno;
     return 0;
 }
 static int process_del_dir(const void * in, int len, char * out, int maxSize)
@@ -146,14 +160,13 @@ static int process_del_dir(const void * in, int len, char * out, int maxSize)
     const char * dir = (const char *)in;
     if (rmdir(dir) == 0)
     {
+        s_errno = 0;
         #define SUCCESS_LEN 8
         memcpy_s(out, maxSize, "Success", SUCCESS_LEN);
         return SUCCESS_LEN;
     }
-    else
-    {
-        return reply_errMsg(out, maxSize);
-    }
+    s_errno = errno;
+    return 0;
 }
 static int process_rename(const void * in, int len, char * out, int maxSize)
 {
@@ -161,14 +174,13 @@ static int process_rename(const void * in, int len, char * out, int maxSize)
     const char * newname = (const char *)in + strlen(oldname) + 1;
     if (rename(oldname, newname) == 0)
     {
+        s_errno = 0;
         #define SUCCESS_LEN 8
         memcpy_s(out, maxSize, "Success", SUCCESS_LEN);
         return SUCCESS_LEN;
     }
-    else
-    {
-        return reply_errMsg(out, maxSize);
-    }
+    s_errno = errno;
+    return 0;
 }
 static int process_list(const void * in, int len, char * out, int maxSize)
 {
@@ -181,9 +193,11 @@ static int process_list(const void * in, int len, char * out, int maxSize)
             out[id++] = fgetc(fp);
         } while (!feof(fp) && id < maxSize);
         fclose(fp);
+        s_errno = 0;
         return id;
     }
     
+    s_errno = CUSTOM_ERRNO;
     #define FAILURE_LEN 8
     memcpy_s(out, maxSize, "Failure", FAILURE_LEN);
     return FAILURE_LEN;
@@ -193,28 +207,26 @@ static int process_del_file(const void * in, int len, char * out, int maxSize)
     const char * filePath = (const char *)in;
     if (unlink(filePath) == 0)
     {
+        s_errno = 0;
         #define SUCCESS_LEN 8
         memcpy_s(out, maxSize, "Success", SUCCESS_LEN);
         return SUCCESS_LEN;
     }
-    else
-    {
-        return reply_errMsg(out, maxSize);
-    }
+    s_errno = errno;
+    return 0;
 }
 static int process_chdir(const void * in, int len, char * out, int maxSize)
 {
     const char * dir = (const char *)in;
     if (chdir(dir) == 0)
     {
+        s_errno = 0;
         #define SUCCESS_LEN 8
         memcpy_s(out, maxSize, "Success", SUCCESS_LEN);
         return SUCCESS_LEN;
     }
-    else
-    {
-        return reply_errMsg(out, maxSize);
-    }
+    s_errno = errno;
+    return 0;
 }
 static int process_getcwd(const void * in, int len, char * out, int maxSize)
 {
@@ -222,8 +234,9 @@ static int process_getcwd(const void * in, int len, char * out, int maxSize)
     char * ret = getcwd(out, maxSize);
     if (ret == 0)
     {
-        return reply_errMsg(out, maxSize);
+        s_errno = errno;
+        return 0;
     }
-    
+    s_errno = 0;
     return strlen(ret);
 }

@@ -1,6 +1,6 @@
-#include "dns.h"
-#include "base64.h"
-#include "util.h"
+#include "../include/dns.h"
+#include "../include/base64.h"
+#include "../include/util.h"
 #include <memory.h>
 #include <string.h>
 #include <stdio.h>

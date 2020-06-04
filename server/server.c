@@ -1,10 +1,10 @@
 #include <stdio.h>
 #include <stdlib.h>
-#include "util.h"
+#include "../include/util.h"
 #include <unistd.h>
 #include "app.h"
-#include "udp.h"
-#include "cmd.h"
+#include "../include/udp.h"
+#include "../include/cmd.h"
 #include <string.h>
 #include <pthread.h>
 #include <ctype.h>
@@ -19,29 +19,30 @@ static void * handleTraffic(void * arg)
         return 0;
     }
 
+    char dataReq[65536];
+    char dataRsp[1024*1024];
     while(1)
     {
-        char data[65536];
         int datalen = 0;
         int hasData = wait_data(pipeFd, 0);
-        unsigned short sid = 0;
+
         if (hasData == 1)
         {
-            datalen = read(pipeFd, data, sizeof(data));
+            datalen = read(pipeFd, dataReq, sizeof(dataReq));
             if (datalen <= 0)
             {
                 perror("read");
                 continue;
             }
-            sid = ((struct CmdReq *)data)->sid;
         }
         else if(hasData == 0)
         {
+            ((struct CmdReq *)dataReq)->code = 0;
             datalen = 8;
         }
         
         char addr[16] = {0};
-        int ret = server_send(fd, data, datalen, addr);
+        int ret = server_send(fd, dataReq, datalen, addr);
         if(ret <= 0)
         {
             perror("server_send");
@@ -50,34 +51,65 @@ static void * handleTraffic(void * arg)
         if (hasData)
         {
         recv:
-            ret = server_recv(fd, data, sizeof(data), addr);
+            ret = server_recv(fd, dataRsp, sizeof(dataRsp), addr);
             if(ret > 0)
             {
-                struct CmdRsp * rsp = (struct CmdRsp *)data;
-                if(rsp->sid != sid)
+                struct CmdReq * req = (struct CmdReq *)dataReq;
+                struct CmdRsp * rsp = (struct CmdRsp *)dataRsp;
+                if(rsp->sid != req->sid)
                     goto recv;
-                unsigned short datalen = ntohs(rsp->datalen);
-                
-                if (rsp->flag == 1)
+                unsigned int datalen = ntohl(rsp->datalen);
+
+                if (rsp->errNo == CUSTOM_ERRNO)
                 {
-                    unsigned long plainLen = 65535;
-                    char * plain = (char *)malloc(plainLen + 1);
-                    int ret = uncompress(plain, &plainLen, rsp->data, datalen);
-                    if (ret == Z_OK)
-                    {
-                        plain[plainLen] = 0;
-                        printf(">>%s\n", plain);
-                    }
-                    else
-                    {
-                        printf("uncompress %d, rsplen %d\n", ret, datalen);
-                    }
-                    free(plain);
+                    rsp->data[datalen] = 0;
+                    printf("Remote error: %s.\n", rsp->data);
+                }
+                else if(rsp->errNo != 0)
+                {
+                    const char * errMsg = strerror(rsp->errNo);
+                    printf("Remote error: %s.\n", errMsg);
                 }
                 else
                 {
-                    rsp->data[datalen] = 0;
-                    printf(">>%s\n", rsp->data);
+                    if (rsp->flag == 1)
+                    {
+                        unsigned long plainLen = datalen*10;
+                        char * plain = (char *)malloc(plainLen + 1);
+                        int ret = uncompress(plain, &plainLen, rsp->data, datalen);
+                        if (ret == Z_OK)
+                        {
+                            if (req->code == SERVER_CMD_DOWNLOAD) //传输的是文件数据
+                            {
+                                const char * remoteName = (char *)(req + 1);
+                                const char * localName = remoteName + strlen(remoteName) + 1;
+                                int ret = writeFile(localName, plain, plainLen);
+                                if (ret < 0)
+                                {
+                                    perror("writeFile");
+                                }
+                                else
+                                {
+                                    printf("Download %s to %s success\n", remoteName, localName);
+                                }
+                            }
+                            else
+                            {
+                                plain[plainLen] = 0;
+                                printf(">>%s\n", plain);
+                            }
+                        }
+                        else
+                        {
+                            printf("uncompress %d, rsplen %d\n", ret, datalen);
+                        }
+                        free(plain);
+                    }
+                    else
+                    {
+                        rsp->data[datalen] = 0;
+                        printf(">>%s\n", rsp->data);
+                    }
                 }
             }
         }
@@ -164,22 +196,21 @@ static void help(int code)
 static int parseCmdLine(char * cmdline, char *argv[])
 {
     int argc = 0;
-    int findAlpha = 0;
+    int findWord = 0;
     for (int i = 0; cmdline[i] != 0; i++)
     {
-        if (isalpha(cmdline[i]) || cmdline[i] == '.' || cmdline[i] == '/')
+        if (cmdline[i] != ' ' && cmdline[i] != '\n')
         {
-        	if(findAlpha == 0)
+        	if(findWord == 0)
         	{
-        		argv[argc] = &cmdline[i];
+        		argv[argc++] = &cmdline[i];
 			}
-            findAlpha = 1;
+            findWord = 1;
         }
-        else if((cmdline[i] == ' ' || cmdline[i] == '\n') && findAlpha)
+        else
         {
-            ++argc;
             cmdline[i] = 0;
-            findAlpha = 0;
+            findWord = 0;
         }
     }
     return argc;
@@ -206,7 +237,7 @@ int main()
         //最多5个参数
         char * argv[6] = {0};
         int argc1 = 0, argc2 = 0;
-        argc1 = parseCmdLine(buffer, argv);
+        argc1 = parseCmdLine(buffer, argv);//包括了命令自身
         if (argc1 == 0)
         {
             continue;
@@ -229,20 +260,16 @@ int main()
         cmd->code = code;
         getRand(&cmd->sid, 2);
         char * p = cmd->data;
-        unsigned short sendlen = sizeof(*cmd);
+        int offset = 0;
         for (int i = 1; i < argc1; i++)
         {
             int len = strlen(argv[i]) + 1;
-            memcpy_s(p, sizeof(buffer) - sendlen, argv[i], len);
-            sendlen += len;
+            memcpy_s(p + offset, sizeof(buffer) - offset - sizeof(*cmd), argv[i], len);
+            offset += len;
         }
-        cmd->datalen = htons(sendlen - sizeof(*cmd));
-        if (sendlen <= 4)//小于等于4，DNS回答会失败
-        {
-            sendlen += 8;
-        }
-        
-        int len = write(fds[1], buffer, sendlen);
+
+        cmd->datalen = htons(offset);        
+        int len = write(fds[1], buffer, offset + sizeof(*cmd));
         if (len <=0 )
         {
             perror("write");

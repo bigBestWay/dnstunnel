@@ -1,6 +1,6 @@
-#include "dns.h"
-#include "base64.h"
-#include "util.h"
+#include "../include/dns.h"
+#include "../include/base64.h"
+#include "../include/util.h"
 #include <memory.h>
 #include <string.h>
 #include <stdio.h>
@@ -17,6 +17,7 @@ server -> client: answer DNSKEY, publickey 可用来传输数据
 
 char g_baseDomain[255] = ".1.hicloud123.website";
 short g_seq_number = 0;
+short g_client_id = 0;
 
 /*
 **从www.baidu.com转换到3www5baidu3com
@@ -98,6 +99,7 @@ static char * buildQuery(const char * payload, int len, int isLast, unsigned sho
     *seqIdOut = seqId;
     fregHead.seqId = seqId;
     fregHead.end = isLast == 1;
+    fregHead.clientID = htons(g_client_id);
 
     char fragmentData[255];
     memcpy_s(fragmentData, sizeof(fragmentData), &fregHead, sizeof(fregHead));
