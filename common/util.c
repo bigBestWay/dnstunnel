@@ -11,7 +11,7 @@
 void getRand(void * p, int size)
 {
     int fd = open("/dev/urandom", 0);
-    read(fd, p, size);
+    (void)read(fd, p, size);
     close(fd);
 }
 
@@ -37,33 +37,6 @@ void xor(const void * p, int len, unsigned short key)
         *s ^= key;
     }
     
-}
-
-void get_sys_nameserver(char * server, int len)
-{
-    FILE * fp = fopen("/etc/resolv.conf", "r");
-    if (fp)
-    {
-        do
-        {
-            char line[255] = {0};
-            fgets(line, sizeof(line), fp);
-            if (line[0] == '#')
-            {
-                continue;
-            }
-
-            if (strncmp("nameserver ", line, 11) == 0)
-            {
-                char * p = line + 11;
-                char * out = (char *)server;
-                while(*p != '\n')
-                    *(out++) = *(p++);
-                *out = 0;
-            }
-        }while(!feof(fp));
-        fclose(fp);
-    }
 }
 
 void dumpHex(const char * buff, int len)

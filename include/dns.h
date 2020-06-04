@@ -110,10 +110,13 @@ typedef enum
     QUERY_DNSKEY = 48
 }QUERY_TYPE;
 
+/** client 使用 **/
 struct QueryPkg * buildQuerys(const char * payload, int len, int * pkgNum);
 int processQuery(const char * payload, int len, struct FragmentCtrl * frag, char * out, int outsize);
+char * parseResponse(const char * packet, int len, int * outlen);
+
+/** server 使用 **/
 char * buildResponseA(const char * query, int len, unsigned int * value, int * outlen);
 char * buildResponseDnskey(const char * query, int len, const char * payload, int payloadlen, int * outlen);
-char * parseResponse(const char * packet, int len, int * outlen);
 
 #endif
