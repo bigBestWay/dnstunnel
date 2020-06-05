@@ -14,19 +14,20 @@ unsigned short g_client_id = 0;
 
 static int isHello(const char * payload)
 {
-    struct CmdReq * cmd = (struct CmdReq *)payload;
+    const struct CmdReq * cmd = (const struct CmdReq *)payload;
     if(cmd->code != CLIENT_CMD_HELLO)
         return 0;
     //收到了hello，校验
-    struct Hello * hello = (struct Hello *)cmd->data;
-    cmd->datalen = ntohs(cmd->datalen);
-    if (cmd->datalen != sizeof(struct Hello))
+    const struct Hello * hello = (const struct Hello *)cmd->data;
+    unsigned short datalen = ntohs(cmd->datalen);
+    if (datalen != sizeof(struct Hello))
     {
         return 0;
     }
-    hello->key = ntohs(hello->key);//TODO 加密
+
     if(hello->msg[0] != 'H' || hello->msg[1] != 'A' || hello->msg[2] != 'L' || hello->msg[3] != 'O')
         return 0;
+    //hello->key = ntohs(hello->key);//TODO 加密
     return 1;
 }
 
@@ -157,7 +158,6 @@ int server_recv(int fd, char * buf, int len, char (*addr)[16])
         }
         else
         {
-            //dumpHex(recvBuf, pureLen);
             const short expectedSeqId = GET_NEXT_SEQID(lastSeqidAck);
             printf("seqid = %d, expect = %d, end=%d\n", frag.seqId, expectedSeqId, frag.end);
             DataBuffer query = {querr_buffer, queryLen};
@@ -168,6 +168,8 @@ int server_recv(int fd, char * buf, int len, char (*addr)[16])
             if(frag.seqId == expectedSeqId || lastSeqidAck == 0xffff)
             {
                 SET_FRAGMENT_ARRIVED(frag.seqId);
+                //printf("%d:", pureLen);
+                //dumpHex(recvBuf, pureLen);
                 recvBuf += pureLen;
                 lastSeqidAck = frag.seqId;
                 if (frag.end)

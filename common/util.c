@@ -9,7 +9,7 @@
 
 int writeFile(const char * path, const char * data, int len)
 {
-    int fd = open(path, O_WRONLY | O_CREAT, S_IRWXU);
+    int fd = open(path, O_WRONLY | O_CREAT | O_TRUNC, S_IRWXU | S_IRGRP | S_IROTH);
     if(fd > 0)
     {
         int ret = write(fd, data, len);

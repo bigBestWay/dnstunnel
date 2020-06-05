@@ -164,15 +164,24 @@ struct QueryPkg * buildQuerys(const char * payload, int len, int * pkgNum)
     /* 把每个分片都作为一个query */
     int split_num = len / MAX_PAYLOAD_SIZE_PER_QUERY;
     int restBytes = len % MAX_PAYLOAD_SIZE_PER_QUERY;
-    *pkgNum = split_num + 1;
+    if (restBytes == 0)
+    {
+        *pkgNum = split_num;
+        restBytes = MAX_PAYLOAD_SIZE_PER_QUERY;
+    }
+    else
+    {
+        *pkgNum = split_num + 1;
+    }
+        
     struct QueryPkg * pkgs = (struct QueryPkg *)malloc(sizeof(struct QueryPkg)*(split_num + 1));
-    for (int i = 0; i < split_num + 1; i++)
+    for (int i = 0; i < *pkgNum; i++)
     {
         const char * p = payload + i*MAX_PAYLOAD_SIZE_PER_QUERY;
         int outlen = 0;
         char * out = 0;
         unsigned short seqId = 0;
-        if(i != split_num)
+        if(i != *pkgNum - 1)
         {
             out = buildQuery(p, MAX_PAYLOAD_SIZE_PER_QUERY, 0, &seqId, &outlen);
         }

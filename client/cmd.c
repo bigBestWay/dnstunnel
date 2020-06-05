@@ -73,7 +73,6 @@ int handleCmd(const struct CmdReq * cmd, char * out, int maxSize)
                     rsp->flag = 1;
                     payloadLen = compressedLen;
                 }
-
                 free(plain);
             }
         }
