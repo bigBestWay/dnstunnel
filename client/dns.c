@@ -19,6 +19,12 @@ char g_baseDomain[255] = ".1.hicloud123.website";
 short g_seq_number = 0;
 short g_client_id = 0;
 
+static short getNewSeqId()
+{
+    if(g_seq_number < 0)
+        g_seq_number = 0;
+    return g_seq_number++;
+}
 /*
 **从www.baidu.com转换到3www5baidu3com
 **返回值 格式后字符串长度，不包含0
@@ -95,7 +101,7 @@ static char * buildQuery(const char * payload, int len, int isLast, unsigned sho
 
     //会话及分片信息，是否最后一片
     struct FragmentCtrl fregHead;
-    unsigned short seqId = g_seq_number < 0?g_seq_number=0:g_seq_number++;
+    unsigned short seqId = getNewSeqId();
     *seqIdOut = seqId;
     fregHead.seqId = seqId;
     fregHead.end = isLast == 1;
