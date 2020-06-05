@@ -111,7 +111,7 @@ typedef enum
     QUERY_DNSKEY = 48
 }QUERY_TYPE;
 
-#define GET_NEXT_SEQID(id) (((short)id + 1) < 0? 0: ((short)id + 1))
+#define GET_NEXT_SEQID(id) (((short)(id + 1)) < 0? 0: ((short)(id + 1)))
 
 /** client 使用 **/
 struct QueryPkg * buildQuerys(const char * payload, int len, int * pkgNum);

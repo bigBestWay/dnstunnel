@@ -8,7 +8,7 @@
 
 int udp_connect(const char *ip, short port)
 {
-    struct sockaddr_in server, peer;
+    struct sockaddr_in server;
     int fd = socket(AF_INET, SOCK_DGRAM, 0);
     if(fd == -1)
     {

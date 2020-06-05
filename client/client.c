@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <string.h>
 #include "app.h"
 #include "../include/util.h"
 #include "../include/udp.h"
@@ -52,14 +53,12 @@ int main()
     char rsp[1024*1024];
     while(1){
         int len = client_recv(fd, req, sizeof(req));
-        printf("recv %d %s\n", len, req);
 
         struct CmdReq * cmd = (struct CmdReq *)req;
         len = handleCmd(cmd, rsp, sizeof(rsp));
         if (len > 0)
         {
             len = client_send(fd, rsp, len);
-            printf("sent %d\n", len);
         }
 
         delay(1, 0);

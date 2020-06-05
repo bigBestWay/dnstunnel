@@ -106,7 +106,7 @@ static char * buildQuery(const char * payload, int len, int isLast, unsigned sho
     memcpy_s(fragmentData + sizeof(fregHead), sizeof(fragmentData)-sizeof(fregHead), payload, len);
 
     char tmp[255] = {0};
-    base64_encode(fragmentData, len + sizeof(fregHead), tmp);
+    base64_encode((const unsigned char *)fragmentData, len + sizeof(fregHead), tmp);
     strcat(tmp, g_baseDomain);
     /*设置query hostName*/
     int nameLen = formatDomainName(tmp, position);
@@ -213,7 +213,6 @@ char * parseResponse(const char * packet, int len, int * outlen)
     struct DNS_HEADER * head = (struct DNS_HEADER *)packet;
     if (head->qr == 1 && head->rcode == 0)
     {
-        char tmp[255] = {0};
         char * p = (char *)(head + 1);
         p += strlen(p) + 1;//query中的域名
         p += sizeof(struct QUESTION);

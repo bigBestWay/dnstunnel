@@ -7,7 +7,7 @@ INCS     = -I../include
 CXXINCS  = 
 BIN      = NDNS_client
 CXXFLAGS = $(CXXINCS) 
-CFLAGS   = $(INCS) -g
+CFLAGS   = $(INCS) -g -Wall
 LDFLAGS  = -Wl,--as-needed -Wl,--exclude-libs=ALL
 RM       = rm -f
 

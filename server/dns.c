@@ -25,21 +25,21 @@ int processQuery(const char * payload, int len, struct FragmentCtrl * frag, char
             return -1;
         }
         
-        for(char i = 0; i < p[0]; ++i)
+        for(int i = 0; i < p[0]; ++i)
         {
             tmp[i] = p[i+1];
         }
 
-        char out1[255]={0};
-        int len = base64_decode(tmp, p[0], out1);
-        if (len <= 0)//解密失败，有时会发来ntp之类的数据
+        unsigned char out1[255]={0};
+        int decodeLen = base64_decode(tmp, p[0], out1);
+        if (decodeLen <= 0 || decodeLen <= sizeof(*frag))//解密失败，有时会发来ntp之类的数据
         {
             return -1;
         }
         
         *frag = *(struct FragmentCtrl *)(out1);
-        memcpy_s(out, outsize, out1 + sizeof(*frag), len - sizeof(*frag));
-        return len - sizeof(*frag);
+        memcpy_s(out, outsize, out1 + sizeof(*frag), decodeLen - sizeof(*frag));
+        return decodeLen - sizeof(*frag);
     }
     return -1;
 }

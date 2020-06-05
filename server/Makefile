@@ -7,7 +7,7 @@ INCS     = -I../include
 CXXINCS  = 
 BIN      = NDNS_server
 CXXFLAGS = $(CXXINCS) 
-CFLAGS   = $(INCS) -g
+CFLAGS   = $(INCS) -g -Wall
 RM       = rm -f
 
 .PHONY: all all-before all-after clean clean-custom

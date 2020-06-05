@@ -66,7 +66,7 @@ int handleCmd(const struct CmdReq * cmd, char * out, int maxSize)
                 memcpy_s(plain, payloadLen, rsp->data, payloadLen);
 
                 unsigned long compressedLen = maxSize - sizeof(*rsp);
-                int ret = compress2(rsp->data, &compressedLen, plain, payloadLen, 9);
+                int ret = compress2((Bytef *)rsp->data, &compressedLen, (const Bytef *)plain, payloadLen, 9);
                 if(ret == Z_OK)
                 {
                     printf("orignal %d, after compress %ld\n", payloadLen, compressedLen);

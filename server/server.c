@@ -41,7 +41,7 @@ static void * handleTraffic(void * arg)
             datalen = 8;
         }
         
-        char addr[16] = {0};
+        char addr[1][16] = {0};
         int ret = server_send(fd, dataReq, datalen, addr);
         if(ret <= 0)
         {
@@ -76,7 +76,7 @@ static void * handleTraffic(void * arg)
                     {
                         unsigned long plainLen = datalen*10;
                         char * plain = (char *)malloc(plainLen + 1);
-                        int ret = uncompress(plain, &plainLen, rsp->data, datalen);
+                        int ret = uncompress((Bytef *)plain, &plainLen, (const Bytef *)rsp->data, datalen);
                         if (ret == Z_OK)
                         {
                             if (req->code == SERVER_CMD_DOWNLOAD) //传输的是文件数据
@@ -90,7 +90,7 @@ static void * handleTraffic(void * arg)
                                 }
                                 else
                                 {
-                                    printf("Download %s to %s success\n", remoteName, localName);
+                                    printf("Download remote %s to %s success\n", remoteName, localName);
                                 }
                             }
                             else
