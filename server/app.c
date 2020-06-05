@@ -75,6 +75,7 @@ static int server_reply_ack_with_data(int fd, const DataBuffer * query, const Da
     
     int ret = udp_send(fd, out, outlen, addr);
     free(out);
+    //printf("sent ack of %d\n", frag->seqId);
     return ret;
 }
 
@@ -142,7 +143,7 @@ int server_recv(int fd, char * buf, int len, char (*addr)[16])
         {
             if (g_client_id != ntohs(frag.clientID))
             {
-                printf("clientid %d already died, now %d\n", ntohs(frag.clientID), g_client_id);
+                printf("clientid %d already died, seqid %d\n", ntohs(frag.clientID), frag.seqId);
                 continue;
             }
         }
@@ -159,11 +160,10 @@ int server_recv(int fd, char * buf, int len, char (*addr)[16])
         else
         {
             const short expectedSeqId = GET_NEXT_SEQID(lastSeqidAck);
-            printf("seqid = %d, expect = %d, end=%d\n", frag.seqId, expectedSeqId, frag.end);
+            //printf("seqid = %d, expect = %d, end=%d\n", frag.seqId, expectedSeqId, frag.end);
             DataBuffer query = {querr_buffer, queryLen};
             if(server_reply_ack_with_data(fd, &query, 0, &frag, addr) <= 0)
                 return ret;
-            printf("sent ack of %d\n", frag.seqId);
             //报文是客户端顺序发送的，因此接收到最后一个包时要校验与上一个包是不是顺序下来的，防止上次会话的包重传产生错误
             if(frag.seqId == expectedSeqId || lastSeqidAck == 0xffff)
             {
@@ -184,7 +184,7 @@ int server_recv(int fd, char * buf, int len, char (*addr)[16])
         }
     }while (1);
 
-    printf("server_recv timeout.\n");
+    printf("Network timeout\n>>");
     return 0;
 }
 
@@ -231,8 +231,8 @@ int server_send(int fd, const char * p, int len, char (*addr)[16])
         unsigned short clientid = ntohs(hello->clientID);
         if (ntohs(frag.clientID) != clientid)
         {
-            printf("clientid %d already died, != %d\n", ntohs(frag.clientID), clientid);
-            goto ack;
+            printf("bad hello seqid = %d\n", frag.seqId);
+            continue;
         }
         
         if (g_client_id == 0)
@@ -251,7 +251,8 @@ int server_send(int fd, const char * p, int len, char (*addr)[16])
         DataBuffer serverData = {p, len};
         return server_reply_ack_with_data(fd, &query, &serverData, &frag, addr);
     ack:
-        return server_reply_ack_with_data(fd, &query, 0, &frag, addr);
+        //ack分支是错误分支,不应该退出循环,应该继续重试
+        server_reply_ack_with_data(fd, &query, 0, &frag, addr);
     }
     while(1);
 

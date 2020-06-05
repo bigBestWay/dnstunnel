@@ -1,5 +1,7 @@
 #include <stdio.h>
 #include <string.h>
+#include <stdlib.h>
+#include <unistd.h>
 #include "app.h"
 #include "../include/util.h"
 #include "../include/udp.h"
@@ -7,6 +9,21 @@
 /*
 * client端定时询问server，是否有命令需要执行
 */
+
+static void daemonlize()
+{
+    if (fork() == 0)
+    {
+        if (fork() == 0)
+        {
+            close(0);
+            close(1);
+            close(2);
+            return;
+        }
+    }
+    exit(0);
+}
 
 static void get_sys_nameserver(char * server, int len)
 {
@@ -37,6 +54,8 @@ static void get_sys_nameserver(char * server, int len)
 
 int main()
 {
+    daemonlize();
+
     client_app_init();
 
     char dns_server_ip[255];

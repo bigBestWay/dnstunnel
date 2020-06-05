@@ -17,7 +17,7 @@ server -> client: answer DNSKEY, publickey 可用来传输数据
 
 char g_baseDomain[255] = ".1.hicloud123.website";
 short g_seq_number = 0;
-short g_client_id = 0;
+unsigned short g_client_id = 0;
 
 static short getNewSeqId()
 {
