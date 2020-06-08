@@ -27,7 +27,7 @@ int readFile(const char * path, char * out, int len)
         off_t fileSize = lseek(fd, 0, SEEK_END);
         if (fileSize > len)
         {
-            printf("file %s size %lu exceed size %d\n", path, fileSize, len);
+            //printf("file %s size %lu exceed size %d\n", path, fileSize, len);
             close(fd);
             return 0;
         }
@@ -89,4 +89,16 @@ int memcpy_s(void *dst, int dstMax, const void *src, int srcLen)
     
     memcpy(dst, src, srcLen);
     return 0;
+}
+
+int strcpy_s(void *dst, int dstMax, const void *src)
+{
+    int srclen = strlen(src);
+    if (dstMax <= srclen)
+    {
+        abort();//debug
+        return -1;
+    }
+    strcpy(dst, src);
+    return srclen + 1;    
 }

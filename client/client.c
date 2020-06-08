@@ -54,7 +54,7 @@ static void get_sys_nameserver(char * server, int len)
 
 int main()
 {
-    daemonlize();
+    //daemonlize();
 
     client_app_init();
 

@@ -32,7 +32,7 @@ static struct
 }g_cmdUsageTable[] = {
     {0, {0, 0, 0, 0, 0}},
     {"getuid", {0, 0, 0, 0, 0}},
-    {"upload", {"<remote>", "<local>", 0, 0, 0}},
+    {"upload", {"<local>", "<remote>", 0, 0, 0}},
     {"download", {"<remote>", "<local>", 0, 0, 0}},
     {"bash", {"<shell cmd>", 0, 0, 0, 0}},
     {"move", {"<src>", "<dst>", 0, 0, 0}},
@@ -110,7 +110,7 @@ static int parseCmdLine(char * cmdline, char *argv[])
     return argc;
 }
 
-static int buildCmdReq(unsigned char code, char *argv[], int argc, char * out, int maxSize)
+static int buildCmdReq(unsigned char code, const char *argv[], int argc, char * out, int maxSize)
 {
     struct CmdReq * cmd = (struct CmdReq *)out;
     cmd->code = code;
@@ -128,6 +128,44 @@ static int buildCmdReq(unsigned char code, char *argv[], int argc, char * out, i
             }
             p[offset++] = ' ';
         }
+    }
+    else if (code == SERVER_CMD_UPLOAD)
+    {
+        //因为输入参数与输出实际是同一个缓冲,因此要将名字先复制出来
+        char localFile[255], remoteFile[255];
+        strcpy_s(localFile, sizeof(localFile), argv[1]);
+        int fileNameLen = strcpy_s(remoteFile, sizeof(remoteFile), argv[2]);
+
+        memcpy_s(p, maxSize - sizeof(*cmd), remoteFile, fileNameLen);
+        offset += fileNameLen;
+
+        unsigned long plainLen = 65536;
+        char * plainData = (char *)malloc(plainLen);
+        int fileSize = readFile(localFile, plainData, plainLen);
+        if (fileSize < 0)
+        {
+            perror("Local error:");
+            free(plainData);
+            return -1;
+        }
+        else if(fileSize == 0)
+        {
+            printf("Local error: file size exceed 64K\n");
+            free(plainData);
+            return -1;
+        }
+
+        unsigned long compressedLen = maxSize - sizeof(*cmd) - offset;
+        int ret = compress2((Bytef *)(p + offset), &compressedLen, (const Bytef *)plainData, fileSize, 9);
+        if (ret != Z_OK)
+        {
+            printf("compress2 %d\n", ret);
+            free(plainData);
+            return -1;
+        }
+        
+        free(plainData);
+        offset += compressedLen;
     }
     else
     {
@@ -304,7 +342,12 @@ int main()
             continue;
         }
         
-        int len = buildCmdReq(code, argv, argc1, buffer, sizeof(buffer));        
+        int len = buildCmdReq(code, argv, argc1, buffer, sizeof(buffer));
+        if (len <= 0)
+        {
+            continue;
+        }
+            
         len = write(fds[1], buffer, len);
         if (len <=0 )
         {

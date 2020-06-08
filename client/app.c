@@ -74,7 +74,7 @@ static int client_send_reliable(int fd, unsigned short seqid, const char * packe
         char * payload = parseResponse(buffer, recvLen, &payloadLen);    
         if (payload && check_ack(seqid, payload, payloadLen) == 1)
         {
-            //printf("get ack of %d\n", seqid);
+            printf("get ack of %d\n", seqid);
             return 0;
         }
     }while(retry < 5);
@@ -87,7 +87,7 @@ int client_send(int fd, const char * p, int len)
     struct QueryPkg * pkgs = buildQuerys(p, len, &pkgNum);
     for (int i = 0; i < pkgNum; i++)
     {
-        //printf("seqid = %d\n", pkgs[i].seqId);
+        printf("seqid = %d\n", pkgs[i].seqId);
         //dumpHex(pkgs[i].payload, pkgs[i].len);
         int ret = write(fd, pkgs[i].payload, pkgs[i].len);
         if (ret <= 0)
@@ -162,7 +162,7 @@ int client_recv(int fd, char * p, int len)
             char * payload = parseResponse(buffer, recvLen, &outlen);
             if (payload && check_ack(pkgs[0].seqId, payload, outlen))
             {
-                //printf("got hello ack %d!\n", pkgs[0].seqId);
+                printf("got hello ack %d!\n", pkgs[0].seqId);
                 if (outlen > sizeof(struct CmdAckPayload))
                 {
                     memcpy_s(p, len, payload + sizeof(struct CmdAckPayload), outlen - sizeof(struct CmdAckPayload));

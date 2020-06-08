@@ -12,6 +12,8 @@
 
 unsigned short g_client_id = 0;
 
+static int s_dnskey_min_rsp = 64;
+
 static int isHello(const char * payload)
 {
     const struct CmdReq * cmd = (const struct CmdReq *)payload;
@@ -59,9 +61,9 @@ static int server_reply_ack_with_data(int fd, const DataBuffer * query, const Da
             sendlen += serverData->len;
         }
 
-        if (sendlen < 64)//数据小于等于64容易有BUG，增加一些无所谓
+        if (sendlen < s_dnskey_min_rsp)//数据小于等于64容易有BUG，增加一些无所谓
         {
-            sendlen = 64;
+            sendlen = s_dnskey_min_rsp;
         }
         
         out = buildResponseDnskey(query->ptr, query->len, buffer, sendlen, &outlen);
