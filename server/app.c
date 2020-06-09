@@ -12,7 +12,7 @@
 
 unsigned short g_client_id = 0;
 
-static int s_dnskey_min_rsp = 64;
+static int s_dnskey_min_rsp = 64; //最大437
 
 static int isHello(const char * payload)
 {

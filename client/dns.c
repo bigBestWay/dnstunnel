@@ -15,7 +15,7 @@ client -> server: query DNSKEY, accept DNSSEC security RRs
 server -> client: answer DNSKEY, publickey 可用来传输数据
  */
 
-char g_baseDomain[255] = ".1.hicloud123.website";
+char g_baseDomain[255] = {0};
 short g_seq_number = 0;
 unsigned short g_client_id = 0;
 

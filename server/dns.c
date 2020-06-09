@@ -6,6 +6,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <arpa/inet.h>
+
 /*
 * server使用
 * 对查询分片进行处理，获得报文，写入out最大也只有45字节
@@ -142,6 +143,7 @@ char * buildResponseDnskey(const char * query, int len, const char * payload, in
     answer_payload->protocol = 3;
     answer_payload->flags = htons(0x0100);
     p += sizeof(*answer_payload);
+    //pulibckey最大长度为437
     memcpy_s(answer_payload->publicKey, mallocLen - (p - out), payload, payloadlen);
     p += payloadlen;
 

@@ -144,7 +144,7 @@ static int buildCmdReq(unsigned char code, const char *argv[], int argc, char * 
         int fileSize = readFile(localFile, plainData, plainLen);
         if (fileSize < 0)
         {
-            perror("Local error:");
+            perror("Local error");
             free(plainData);
             return -1;
         }
