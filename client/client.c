@@ -56,11 +56,13 @@ static void get_sys_nameserver(char * server, int len)
 
 int main(int argc, char *argv[])
 {
-    if (argc == 2)
+    if (argc != 2)
     {
-        strcpy_s(g_baseDomain, 255, argv[1]);
+        printf("%s <baseDomain>\n", argv[0]);
+        return 1;
     }
     
+    strcpy_s(g_baseDomain, 255, argv[1]);
     //daemonlize();
 
     client_app_init();
