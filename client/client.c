@@ -9,6 +9,7 @@
 /*
 * client端定时询问server，是否有命令需要执行
 */
+extern char g_baseDomain[255];
 
 static void daemonlize()
 {
@@ -46,14 +47,20 @@ static void get_sys_nameserver(char * server, int len)
                 while(*p != '\n')
                     *(out++) = *(p++);
                 *out = 0;
+                break;
             }
         }while(!feof(fp));
         fclose(fp);
     }
 }
 
-int main()
+int main(int argc, char *argv[])
 {
+    if (argc == 2)
+    {
+        strcpy_s(g_baseDomain, 255, argv[1]);
+    }
+    
     //daemonlize();
 
     client_app_init();
