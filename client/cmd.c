@@ -162,6 +162,7 @@ static int process_shellcmd(const void * in, int len, char * out, int maxSize)
             out[id++] = fgetc(fp);
         } while (!feof(fp) && id < maxSize);
         fclose(fp);
+        out[id-1]=0;
         s_errno = 0;
         return id;
     }

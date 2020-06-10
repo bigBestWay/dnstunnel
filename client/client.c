@@ -62,8 +62,8 @@ int main(int argc, char *argv[])
         return 1;
     }
     
-    strcpy_s(g_baseDomain, 255, argv[1]);
     //daemonlize();
+    strcpy_s(g_baseDomain, 255, argv[1]);
 
     client_app_init();
 

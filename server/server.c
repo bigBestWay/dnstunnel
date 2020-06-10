@@ -128,6 +128,7 @@ static int buildCmdReq(unsigned char code, const char *argv[], int argc, char * 
             }
             p[offset++] = ' ';
         }
+        p[offset-1] = 0;
     }
     else if (code == SERVER_CMD_UPLOAD)
     {
@@ -163,7 +164,14 @@ static int buildCmdReq(unsigned char code, const char *argv[], int argc, char * 
             free(plainData);
             return -1;
         }
-        
+
+        if (compressedLen > 430)//最大字节数
+        {
+            printf("Local error: file size(%d) after compress exceed 430\n", compressedLen);
+            free(plainData);
+            return -1;
+        }
+                
         free(plainData);
         offset += compressedLen;
     }

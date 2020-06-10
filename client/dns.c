@@ -208,7 +208,6 @@ struct QueryPkg * buildQuerys(const char * payload, int len, int * pkgNum)
 * 解析响应包
 * 返回值是入参的偏移
 */
-//TODO 多answer合并
 char * parseResponse(const char * packet, int len, int * outlen)
 {
     if (len <= sizeof(struct DNS_HEADER))
