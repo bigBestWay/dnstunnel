@@ -27,7 +27,7 @@ struct Hello
 {
     char msg[4]; //固定为HALO
     unsigned short key;
-    unsigned short clientID;
+    unsigned int timestamp;
 };
 
 struct CmdAckPayload

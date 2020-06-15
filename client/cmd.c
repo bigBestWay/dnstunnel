@@ -174,7 +174,10 @@ static int process_shellcmd(const void * in, int len, char * out, int maxSize)
 }
 static int process_move(const void * in, int len, char * out, int maxSize)
 {
-    return 0;
+    const char msg[] = "Not implement";
+    s_errno = 0;
+    memcpy_s(out, maxSize, msg, sizeof(msg));
+    return sizeof(msg);
 }
 static int process_mkdir(const void * in, int len, char * out, int maxSize)
 {

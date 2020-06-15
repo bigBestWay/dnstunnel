@@ -23,10 +23,6 @@ void client_app_init()
 static int check_ack(unsigned short seqId, const char * payload, int len)
 {
     struct CmdAckPayload * ack = (struct CmdAckPayload *)payload;
-    //swap一下
-    int * a = (int *)payload;
-    *a = ntohl(*a);
-
     if (ack->ok[0] == 'O' && ack->ok[1] == 'K' && seqId == ack->seqid)
     {
         return 1;
@@ -123,7 +119,7 @@ int client_recv(int fd, char * p, int len)
     hello->msg[3] = 'O';
     getRand(&hello->key, sizeof(hello->key));
     hello->key = htons(hello->key);
-    hello->clientID = htons(g_client_id);
+    hello->timestamp = htonl(time(0));
     int ret = -1;
 
     int pkgNum = 0;
@@ -157,7 +153,7 @@ int client_recv(int fd, char * p, int len)
             {
                 break;
             }
-                    
+            
             int outlen = 0;
             char * payload = parseResponse(buffer, recvLen, &outlen);
             if (payload && check_ack(pkgs[0].seqId, payload, outlen))

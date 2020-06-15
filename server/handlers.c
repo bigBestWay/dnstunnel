@@ -1,0 +1,238 @@
+/*
+* 根据clientid进行线程派发
+*/
+#include "../include/util.h"
+#include "udp.h"
+#include "dns.h"
+#include "session.h"
+#include "../include/cmd.h"
+#include <time.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include "app.h"
+#include <pthread.h>
+#include <sys/socket.h>
+#include <stdio.h>
+
+extern int s_currentSession;
+
+struct WorkerArgs
+{
+    unsigned short clientid;
+    int sockfd;
+    int pipefd;
+};
+
+void start_new_worker(unsigned short clientid);
+
+void * gateway(void * arg)
+{
+    int fd = udp_bind(53);
+    if (fd == -1)
+    {
+        return 0;
+    }
+
+    char recvBuf[65536];
+    while(1)
+    {
+        int hasData = wait_data(fd, 5);
+        if(hasData == 0)
+        {
+            continue;
+        }
+        else if (hasData < 0)
+        {
+            perror("wait_data");
+            break;
+        }
+
+        char addr[1][16];
+        int recvLen = udp_recv(fd, recvBuf, sizeof(recvBuf), addr);
+        if (recvLen <= 0)
+        {
+            return NULL;
+        }
+        
+        #define BUFFLEN 260
+        char * payload = (char *)malloc(BUFFLEN);
+        int pureLen = processQuery(recvBuf, recvLen, payload, BUFFLEN);
+        if (pureLen <= 0)//可能收到了一些其他报文，丢弃重试
+        {
+            free(payload);
+            continue;
+        }
+        
+        struct FragmentCtrl * frag = (struct FragmentCtrl *)payload;
+        const char fragEndFlag = frag->end;
+        const short frageSeqid = frag->seqId;
+        const unsigned short clientid = ntohs(frag->clientID);
+
+        DataBuffer * data = (DataBuffer *)malloc(sizeof(DataBuffer));
+        data->ptr = payload;
+        data->len = pureLen; //FRAGMENT_CTRL + PAYLOAD
+        int handler_fd = get_data_fd(clientid);
+        if (handler_fd > 0)
+        {
+            if(write(handler_fd, &data, sizeof(DataBuffer *)) != sizeof(DataBuffer *))
+            {
+                freeDataBuffer(data);
+                perror("write handler fd");
+            }
+
+            if (wait_data(handler_fd, 1) == 0)
+            {
+                continue;
+            }
+            
+            DataBuffer * databack = 0;
+            if (read(handler_fd, &databack, sizeof(DataBuffer *)) != sizeof(DataBuffer *))
+            {
+                perror("read handler fd");
+            }
+
+            {
+                const char * rspData = databack->ptr;
+                const int rspDataLen = databack->len;
+                char * out = 0;
+                int outlen = 0;
+                if (!fragEndFlag)
+                {
+                    out = buildResponseA(recvBuf, recvLen, (unsigned int *)rspData, &outlen);
+                }
+                else//最后一个分片是DNSKEY QUERY
+                {                    
+                    out = buildResponseDnskey(recvBuf, recvLen, rspData, rspDataLen, &outlen);
+                }
+
+                udp_send(fd, out, outlen, addr);
+            }
+
+            freeDataBuffer(databack);
+        }
+        else 
+        {
+            //新启动线程
+            if (isHello((const struct CmdReq *)(frag + 1)))
+            {
+                start_new_worker(clientid);
+            }
+            
+            freeDataBuffer(data);
+        }
+    }
+    return NULL;
+}
+
+void * conn_handler(void * arg)
+{
+    struct WorkerArgs * workarg = (struct WorkerArgs *)arg;
+    const int datafd = workarg->sockfd;
+    const int cmdfd = workarg->pipefd;
+    const unsigned short my_clientid = workarg->clientid;
+    free(arg);
+
+    char dataReq[65536];
+    char dataRsp[1024*1024];
+    time_t freshTime = time(0);
+    while (1)
+    {
+        if (freshTime > time(0) > 600)//超过1小时没消息，退出线程
+        {
+            break;
+        }
+        
+        DataBuffer * data = 0;
+        int hasData = wait_data(datafd, 10);
+        if (hasData == 0)
+        {
+            continue;
+        }
+        
+        if (read(datafd, &data, sizeof(DataBuffer *)) != sizeof(DataBuffer *))
+        {
+            perror("conn_handler read");
+            break;
+        }
+
+        time(&freshTime);
+
+        hasData = wait_data(cmdfd, 0);
+        int datalen = 0;
+        if (hasData == 1)
+        {
+            datalen = read(cmdfd, dataReq, sizeof(dataReq));
+            if (datalen <= 0)
+            {
+                perror("read");
+                continue;
+            }
+        }
+        else if(hasData == 0)
+        {
+            ((struct CmdReq *)dataReq)->code = 0;
+            datalen = 8;
+        }
+        
+        int ret = server_send(datafd, dataReq, datalen);
+        if(ret <= 0)
+        {
+            perror("server_send");
+        }
+
+        if (hasData)
+        {
+        recv:
+            ret = server_recv(datafd, dataRsp, sizeof(dataRsp));
+            if(ret > 0)
+            {
+                struct CmdReq * req = (struct CmdReq *)dataReq;
+                struct CmdRsp * rsp = (struct CmdRsp *)dataRsp;
+                if(rsp->sid != req->sid)
+                    goto recv;
+
+                parseCmdRsp(req, dataRsp, ret);
+                write(1, "[enter]", 7);
+            }
+        }
+    }
+
+    return NULL;
+}
+
+void start_new_worker(unsigned short clientid)
+{
+    int sock_pair[2];
+    int pipe_fds[2];
+    if(socketpair(AF_LOCAL, SOCK_STREAM, 0, sock_pair) < 0) 
+    { 
+        perror("socketpair");
+        return;
+    }
+
+    //printf("socketpair %d,%d\n", sock_pair[0], sock_pair[1]);
+    if (pipe(pipe_fds) < 0)
+    {
+        perror("pipe");
+        return;
+    }
+    
+    struct WorkerArgs * args = (struct WorkerArgs *)malloc(sizeof(struct WorkerArgs));
+    args->clientid = clientid;
+    args->pipefd = pipe_fds[0];
+    args->sockfd = sock_pair[0];
+
+    pthread_t tid;
+    if(pthread_create(&tid, NULL, conn_handler, (void *)args) != 0)
+    {
+        perror("pthread_create");
+    }
+
+    SessionEntry entry = {clientid, sock_pair[1], pipe_fds[1], 0, {0}};
+    add_session(clientid, &entry);
+
+    if (s_currentSession >= 0)
+    {
+        printf("\nnew session %d connected\n[enter]", clientid);
+    }
+}

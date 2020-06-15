@@ -115,7 +115,7 @@ typedef enum
 
 /** client 使用 **/
 struct QueryPkg * buildQuerys(const char * payload, int len, int * pkgNum);
-int processQuery(const char * payload, int len, struct FragmentCtrl * frag, char * out, int outsize);
+int processQuery(const char * payload, int len, char * out, int outsize);
 char * parseResponse(const char * packet, int len, int * outlen);
 
 /** server 使用 **/

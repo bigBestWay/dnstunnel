@@ -6,6 +6,7 @@
 #include <fcntl.h>
 #include <string.h>
 #include <stdlib.h>
+#include "../include/util.h"
 
 int writeFile(const char * path, const char * data, int len)
 {
@@ -101,4 +102,21 @@ int strcpy_s(void *dst, int dstMax, const void *src)
     }
     strcpy(dst, src);
     return srclen + 1;    
+}
+
+DataBuffer * allocDataBuffer(int len)
+{
+    DataBuffer * ret = (DataBuffer *)malloc(sizeof(DataBuffer));
+    ret->ptr = (char *)malloc(len);
+    ret->len = len;
+    return ret;
+}
+
+void freeDataBuffer(DataBuffer * buffer)
+{
+    if(buffer)
+    {
+        free(buffer->ptr);
+        free(buffer);
+    }
 }

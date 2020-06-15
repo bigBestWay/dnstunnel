@@ -11,7 +11,7 @@
 * server使用
 * 对查询分片进行处理，获得报文，写入out最大也只有45字节
 */
-int processQuery(const char * payload, int len, struct FragmentCtrl * frag, char * out, int outsize)
+int processQuery(const char * payload, int len, char * out, int outsize)
 {
     struct DNS_HEADER * head = (struct DNS_HEADER *)payload;
     //有时这个附加选项会被删掉，因此不强求附加选项
@@ -31,16 +31,13 @@ int processQuery(const char * payload, int len, struct FragmentCtrl * frag, char
             tmp[i] = p[i+1];
         }
 
-        unsigned char out1[255]={0};
-        int decodeLen = base64_decode(tmp, p[0], out1);
-        if (decodeLen <= 0 || decodeLen <= sizeof(*frag))//解密失败，有时会发来ntp之类的数据
+        int decodeLen = base64_decode(tmp, p[0], out);
+        if (decodeLen <= 0 || decodeLen <= sizeof(struct FragmentCtrl))//解密失败，有时会发来ntp之类的数据
         {
             return -1;
         }
         
-        *frag = *(struct FragmentCtrl *)(out1);
-        memcpy_s(out, outsize, out1 + sizeof(*frag), decodeLen - sizeof(*frag));
-        return decodeLen - sizeof(*frag);
+        return decodeLen;
     }
     return -1;
 }
@@ -89,7 +86,7 @@ char * buildResponseA(const char * query, int len, unsigned int * value, int * o
     answer->_class = htons(1);
     unsigned int * ip = (unsigned int *)answer->rdata;
     
-    *ip = htonl(*value);
+    *ip = (*value);
 
     *outlen = mallocLen;
 

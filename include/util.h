@@ -3,7 +3,7 @@
 
 typedef struct
 {
-    const char * ptr;
+    char * ptr;
     int len;
 }DataBuffer;
 
@@ -22,5 +22,9 @@ int strcpy_s(void *dst, int dstMax, const void *src);
 int writeFile(const char * path, const char * data, int len);
 
 int readFile(const char * path, char * out, int len);
+
+DataBuffer * allocDataBuffer(int len);
+
+void freeDataBuffer(DataBuffer * buffer);
 
 #endif
