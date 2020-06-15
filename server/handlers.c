@@ -65,7 +65,6 @@ void * gateway(void * arg)
         
         struct FragmentCtrl * frag = (struct FragmentCtrl *)payload;
         const char fragEndFlag = frag->end;
-        const short frageSeqid = frag->seqId;
         const unsigned short clientid = ntohs(frag->clientID);
 
         DataBuffer * data = (DataBuffer *)malloc(sizeof(DataBuffer));
@@ -129,7 +128,7 @@ void * conn_handler(void * arg)
     struct WorkerArgs * workarg = (struct WorkerArgs *)arg;
     const int datafd = workarg->sockfd;
     const int cmdfd = workarg->pipefd;
-    const unsigned short my_clientid = workarg->clientid;
+    //const unsigned short my_clientid = workarg->clientid;
     free(arg);
 
     char dataReq[65536];
@@ -137,7 +136,7 @@ void * conn_handler(void * arg)
     time_t freshTime = time(0);
     while (1)
     {
-        if (freshTime > time(0) > 600)//超过1小时没消息，退出线程
+        if (time(0) - freshTime > 600)//超过1小时没消息，退出线程
         {
             break;
         }

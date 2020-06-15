@@ -171,7 +171,7 @@ static int buildCmdReq(unsigned char code, const char *argv[], int argc, char * 
 
         if (compressedLen > 430)//最大字节数
         {
-            printf("Local error: file size(%d) after compress exceed 430\n", compressedLen);
+            printf("Local error: file size(%lu) after compress exceed 430\n", compressedLen);
             free(plainData);
             return -1;
         }
