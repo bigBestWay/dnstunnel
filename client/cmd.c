@@ -1,5 +1,4 @@
 #include "../include/cmd.h"
-#include "sys/types.h"
 #include "../include/util.h"
 #include <pwd.h>
 #include <grp.h>
@@ -12,6 +11,7 @@
 #include "zlib.h"
 #include <stdlib.h>
 #include <errno.h>
+#include <netinet/in.h>
 
 static int s_errno = 0;
 
@@ -29,6 +29,7 @@ static int process_list(const void * in, int len, char * out, int maxSize);
 static int process_del_file(const void * in, int len, char * out, int maxSize);
 static int process_chdir(const void * in, int len, char * out, int maxSize);
 static int process_getcwd(const void * in, int len, char * out, int maxSize);
+static int process_getouterip(const void * in, int len, char * out, int maxSize);
 
 static CMD_HANDLE g_cmdTable[256] = {
     0,
@@ -44,6 +45,7 @@ static CMD_HANDLE g_cmdTable[256] = {
     process_del_file,//SERVER_CMD_DELFILE
     process_chdir, //SERVER_CMD_CHDIR
     process_getcwd,//SERVER_CMD_GETCWD
+    process_getouterip,//SERVER_CMD_GETOUTERIP
 };
 
 #define GET_CMD_HANDLE(code) g_cmdTable[code]
@@ -276,4 +278,58 @@ static int process_getcwd(const void * in, int len, char * out, int maxSize)
     }
     s_errno = 0;
     return strlen(ret);
+}
+
+static unsigned int get_outer_ip()
+{
+    const char cmd[] = "curl https://setting1.hicloud.com/AccountServer/ip.jsp?Version=10000";
+    FILE * fp = popen(cmd, "r");
+    if (fp)
+    {
+        do
+        {
+            char buffer[255] = {0};
+            fgets(buffer, sizeof(buffer), fp);
+            char * p = strstr(buffer, "<br>");
+            if (p == NULL)
+                continue;
+            
+            *p = 0;
+            for (int i = 0; buffer[i]; ++i)
+            {
+                if (buffer[i] == ',')
+                {
+                    buffer[i] = 0;
+                    break;
+                }
+            }
+            
+            struct in_addr addr;
+            if(inet_aton(buffer, &addr) == 0)
+                continue;
+
+            unsigned int ip = htonl(addr.s_addr);
+            unsigned char first = (ip & 0xff000000)>>24;
+            if (first != 10 && first != 192 && first != 172 && first != 100 && first != 127)
+            {
+                return ip;
+            }
+        }while(!feof(fp));
+        fclose(fp);
+    }
+    return 0;
+}
+
+int process_getouterip(const void * in, int len, char * out, int maxSize)
+{
+    unsigned int * ip = (unsigned int *)out;
+    char * hostname = (char *)(ip + 1);
+    *ip = get_outer_ip();
+    if(gethostname(hostname, maxSize - sizeof(*ip)) == 0)
+    {
+        s_errno = 0;
+        return sizeof(*ip) + strlen(hostname);
+    }
+    s_errno = errno;
+    return 0;
 }

@@ -27,6 +27,7 @@ int s_currentSession = -1;
     process_del_file,//SERVER_CMD_DELFILE
     process_chdir, //SERVER_CMD_CHDIR
     process_getcwd,//SERVER_CMD_GETCWD
+    SERVER_CMD_GETOUTERIP
 */
 
 static struct
@@ -46,7 +47,8 @@ static struct
     {"list", {0, 0, 0, 0, 0}},
     {"rm", {"<file>", 0, 0, 0, 0}},
     {"cd", {"<dir>", 0, 0, 0, 0}},
-    {"pwd", {0, 0, 0, 0, 0}}
+    {"pwd", {0, 0, 0, 0, 0}},
+    {"hostip", {0, 0, 0, 0, 0}},
 };
 
 //-1 没有命令
@@ -250,8 +252,21 @@ void parseCmdRsp(const struct CmdReq * req, const char * data, int len)
         }
         else
         {
-            rsp->data[datalen] = 0;
-            printf("\n%s\n", rsp->data);
+            if (req->code == SERVER_CMD_GETOUTERIP)
+            {
+                unsigned int * ip = (unsigned int *)(rsp->data);
+                struct in_addr addr;
+                addr.s_addr = ntohl(*ip);
+                char * ipv4 = inet_ntoa(addr);
+                char * hostname = (char *)(ip + 1);
+                rsp->data[datalen] = 0;
+                printf("\nhostname:%s,ip:%s\n", hostname, ipv4);
+            }
+            else
+            {
+                rsp->data[datalen] = 0;
+                printf("\n%s\n", rsp->data);
+            }
         }
     }
 }
