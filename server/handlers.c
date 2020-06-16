@@ -15,6 +15,7 @@
 #include <stdio.h>
 
 extern int s_currentSession;
+__thread unsigned short g_tls_myclientid = 0; 
 
 struct WorkerArgs
 {
@@ -128,7 +129,7 @@ void * conn_handler(void * arg)
     struct WorkerArgs * workarg = (struct WorkerArgs *)arg;
     const int datafd = workarg->sockfd;
     const int cmdfd = workarg->pipefd;
-    //const unsigned short my_clientid = workarg->clientid;
+    g_tls_myclientid = workarg->clientid;
     free(arg);
 
     char dataReq[65536];
@@ -138,20 +139,14 @@ void * conn_handler(void * arg)
     {
         if (time(0) - freshTime > 600)//超过1小时没消息，退出线程
         {
+            printf("session[%d] timeout\n", g_tls_myclientid);
             break;
         }
         
-        DataBuffer * data = 0;
         int hasData = wait_data(datafd, 10);
         if (hasData == 0)
         {
             continue;
-        }
-        
-        if (read(datafd, &data, sizeof(DataBuffer *)) != sizeof(DataBuffer *))
-        {
-            perror("conn_handler read");
-            break;
         }
 
         time(&freshTime);
@@ -191,11 +186,14 @@ void * conn_handler(void * arg)
                     goto recv;
 
                 parseCmdRsp(req, dataRsp, ret);
-                write(1, "[enter]", 7);
+                printf("Session[%d]>>", g_tls_myclientid);
             }
         }
     }
 
+    delete_session(g_tls_myclientid);
+    close(cmdfd);
+    close(datafd);
     return NULL;
 }
 
@@ -232,6 +230,6 @@ void start_new_worker(unsigned short clientid)
 
     if (s_currentSession >= 0)
     {
-        printf("\nnew session %d connected\n[enter]", clientid);
+        printf("\nNew session %d connected\nSession[%d]>>", clientid, s_currentSession);
     }
 }

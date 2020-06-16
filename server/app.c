@@ -10,6 +10,8 @@
 #include <string.h>
 #include <time.h>
 
+extern __thread unsigned short g_tls_myclientid;
+
 int isHello(const struct CmdReq * cmd)
 {
     if(cmd->code != CLIENT_CMD_HELLO)
@@ -61,6 +63,7 @@ static int server_reply_ack_with_data(int fd, const DataBuffer * serverData, con
     ack->ok[0] = 'O';
     ack->ok[1] = 'K';
 
+    //printf("CLIENT[%d] send ack of seqid %d, clientid %d\n", g_tls_myclientid, frag->seqId, ntohs(frag->clientID));
     return write(fd, &rspData, sizeof(rspData));
 }
 
@@ -103,6 +106,12 @@ int server_recv(int fd, char * buf, int len)
         }
 
         frag = (struct FragmentCtrl *)(data->ptr);
+        if (ntohs(frag->clientID) != g_tls_myclientid)
+        {
+            freeDataBuffer(data);
+            continue;
+        }
+        
         struct CmdReq * cmd = (struct CmdReq *)(frag + 1);
         const int datalen = data->len - sizeof(*frag);
         //如果收到hello, 丢弃
@@ -131,7 +140,7 @@ int server_recv(int fd, char * buf, int len)
         else
         {
             const short expectedSeqId = GET_NEXT_SEQID(lastSeqidAck);
-            //printf("seqid = %d, expect = %d, end=%d\n", frag->seqId, expectedSeqId, frag->end);
+            //printf("CLIENT[%d] seqid = %d, expect = %d, end=%d\n", g_tls_myclientid, frag->seqId, expectedSeqId, frag->end);
             if(server_reply_ack_with_data(fd, 0, frag) <= 0)
             {
                 perror("server_reply_ack_with_data");
@@ -161,7 +170,7 @@ int server_recv(int fd, char * buf, int len)
         }
     }while (1);
 
-    printf("\nNetwork timeout\n[enter]");
+    printf("\nNetwork timeout\nSession[%d]>>", g_tls_myclientid);
     return 0;
 }
 
@@ -189,21 +198,18 @@ int server_send(int fd, const char * p, int len)
         }
 
         frag = (struct FragmentCtrl *)(data->ptr);
+        if (ntohs(frag->clientID) != g_tls_myclientid)
+        {
+            freeDataBuffer(data);
+            continue;
+        }
+
         struct CmdReq * cmd = (struct CmdReq *)(frag + 1);
         if (!isHello(cmd))
         {
             goto ack;
         }
-        
-        /*struct Hello * hello = (struct Hello *)cmd->data;
-        unsigned short clientid = ntohs(hello->clientID);
-        if (ntohs(frag->clientID) != clientid)
-        {
-            printf("bad hello seqid = %d\n", frag->seqId);
-            freeDataBuffer(data);
-            continue;
-        }*/
-        
+                
         freeDataBuffer(data);
         DataBuffer serverData = {p, len};
         return server_reply_ack_with_data(fd, &serverData, frag);
