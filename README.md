@@ -1,5 +1,5 @@
 #dnstunnel
-一款多会话的二进制DNS远控
+一款多会话的二进制DNS隧道远控
 #编译
 ```
 ./build.sh
