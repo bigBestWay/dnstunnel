@@ -31,7 +31,7 @@ void * gateway(void * arg)
     int fd = udp_bind(53);
     if (fd == -1)
     {
-        return 0;
+        exit(1);
     }
 
     char recvBuf[65536];
