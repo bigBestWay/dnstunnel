@@ -282,30 +282,31 @@ static int process_getcwd(const void * in, int len, char * out, int maxSize)
 
 static unsigned int get_outer_ip()
 {
-    const char cmd[] = "curl https://setting1.hicloud.com/AccountServer/ip.jsp?Version=10000";
+    const char cmd[] = "curl http://ip-api.com/json/";
     FILE * fp = popen(cmd, "r");
     if (fp)
     {
         do
         {
-            char buffer[255] = {0};
+            char buffer[1024] = {0};
             fgets(buffer, sizeof(buffer), fp);
-            char * p = strstr(buffer, "<br>");
+            const char * label = "\"query\":\"";
+            char * p = strstr(buffer, label);
             if (p == NULL)
                 continue;
             
-            *p = 0;
-            for (int i = 0; buffer[i]; ++i)
+            p += strlen(label);
+            for (int i = 0; p[i]; ++i)
             {
-                if (buffer[i] == ',')
+                if (p[i] == '"')
                 {
-                    buffer[i] = 0;
+                    p[i] = 0;
                     break;
                 }
             }
             
             struct in_addr addr;
-            if(inet_aton(buffer, &addr) == 0)
+            if(inet_aton(p, &addr) == 0)
                 continue;
 
             unsigned int ip = htonl(addr.s_addr);
