@@ -18,14 +18,22 @@ void clientid_sequid_init()
     getRand(&g_seq_number, sizeof(g_seq_number));
     g_seq_number &= 0x7fff;
     getRand(&g_client_id, sizeof(g_client_id));
+    debug("MYCLIENTID = %d\n", g_client_id);
 }
 
+/*
+ack校验
+返回值有3种：
+0 不是ACK
+1 是ACK并且序号正确
+*/
 static int check_ack(unsigned short seqId, const char * payload, int len)
 {
     struct CmdAckPayload * ack = (struct CmdAckPayload *)payload;
-    if (ack->ok[0] == 'O' && ack->ok[1] == 'K' && seqId == ack->seqid)
+    if (ack->ok[0] == 'O' && ack->ok[1] == 'K')
     {
-        return 1;
+        if(seqId == ack->seqid)
+            return 1;
     }
     return 0;
 }
@@ -67,7 +75,7 @@ static int client_send_reliable(int fd, unsigned short seqid, const char * packe
         }
         
         int payloadLen = 0;
-        char * payload = parseResponse(buffer, recvLen, &payloadLen);    
+        char * payload = parseResponse(buffer, recvLen, &payloadLen);
         if (payload && check_ack(seqid, payload, payloadLen) == 1)
         {
             debug("get ack of %d\n", seqid);
@@ -80,7 +88,7 @@ static int client_send_reliable(int fd, unsigned short seqid, const char * packe
 }
 
 /*
-可靠发送，成功返回0,超时返回1,错误返回-1
+可靠发送，成功返回发送成功长度,超时返回0,错误返回-1
 有一个分片没发成功，整个包都没发成功
 */
 int client_send(int fd, const char * p, int len)
@@ -89,7 +97,7 @@ int client_send(int fd, const char * p, int len)
     struct QueryPkg * pkgs = buildQuerys(p, len, &pkgNum);
     for (int i = 0; i < pkgNum; i++)
     {
-        debug("seqid = %d\n", pkgs[i].seqId);
+        debug("client_send seqid = %d\n", pkgs[i].seqId);
         //dumpHex(pkgs[i].payload, pkgs[i].len);
         int ret = write(fd, pkgs[i].payload, pkgs[i].len);
         if (ret <= 0)
@@ -111,7 +119,10 @@ int client_send(int fd, const char * p, int len)
     return len;
 }
 
-/* client的接收，实际是主动询问server并接收server命令 */
+/* client的接收，实际是主动询问server并接收server命令 
+返回值 接收到的数据长度
+0，只接收到ack; > 0, 接收到payload; < 0 超时或错误
+*/
 int client_recv(int fd, char * p, int len)
 {
     char packet[sizeof(struct CmdReq) + sizeof(struct Hello)];
@@ -147,6 +158,7 @@ int client_recv(int fd, char * p, int len)
             }
             else if (ret == 0)//超时重发
             {
+                ret = -1;//important
                 ++ retry;
                 continue;
             }
@@ -155,19 +167,25 @@ int client_recv(int fd, char * p, int len)
             int recvLen = read(fd, buffer, sizeof(buffer));
             if (recvLen <= 0)
             {
+                ret = -1;
                 break;
             }
             
             int outlen = 0;
             char * payload = parseResponse(buffer, recvLen, &outlen);
-            if (payload && check_ack(pkgs[0].seqId, payload, outlen))
+            if (payload && check_ack(pkgs[0].seqId, payload, outlen) == 1)
             {
                 debug("got hello ack %d!\n", pkgs[0].seqId);
                 if (outlen > sizeof(struct CmdAckPayload))
                 {
                     memcpy_s(p, len, payload + sizeof(struct CmdAckPayload), outlen - sizeof(struct CmdAckPayload));
+                    ret = outlen - sizeof(struct CmdAckPayload);
                 }
-                ret = outlen - sizeof(struct CmdAckPayload);
+                else
+                {
+                    ret = -1;
+                }
+
                 break;
             }
         } while (retry < 5);

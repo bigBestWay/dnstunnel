@@ -1,5 +1,5 @@
 #include "../include/dns.h"
-#include "../include/base64.h"
+#include "../include/base32.h"
 #include "../include/util.h"
 #include <memory.h>
 #include <string.h>
@@ -31,9 +31,10 @@ int processQuery(const char * payload, int len, char * out, int outsize)
             tmp[i] = p[i+1];
         }
 
-        int decodeLen = base64_decode(tmp, p[0], out);
+        int decodeLen = base32_decode(tmp, out, outsize);
         if (decodeLen <= 0 || decodeLen <= sizeof(struct FragmentCtrl))//解密失败，有时会发来ntp之类的数据
         {
+            debug("base32_decode %s error.\n", tmp);
             return -1;
         }
         

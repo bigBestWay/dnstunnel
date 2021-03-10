@@ -1,7 +1,7 @@
 #ifndef _APP_H_
 #define _APP_H_
 
-void client_app_init();
+void clientid_sequid_init();
 /*
 * 应用层协议封装，完成可靠传输
 */

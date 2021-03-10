@@ -3,6 +3,8 @@
 #include "../include/cmd.h"
 
 int isHello(const struct CmdReq * cmd);
+
+int isNewSession(const struct CmdReq * cmd);
 /*
 * 应用层协议封装，完成可靠传输
 */

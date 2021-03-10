@@ -51,7 +51,7 @@ int isNewSession(const struct CmdReq * cmd)
     if(data->magic[0] != '\xde' || data->magic[1] != '\xad' || data->magic[2] != '\xca' || data->magic[3] != '\xfe')
         return 0;
 
-    if (ntohl(data->timestamp) - time(0) >= 60)//hello有效期为1分钟
+    if (ntohl(data->timestamp) - time(0) >= 60)//有效期为1分钟
     {
         debug("NewSession expired.\n");
         return 0;
@@ -90,7 +90,6 @@ static int server_reply_ack_with_data(int fd, const DataBuffer * serverData, con
     debug("CLIENT[%d] send ack of seqid %d, clientid %d\n", g_tls_myclientid, frag->seqId, ntohs(frag->clientID));
     return write(fd, &rspData, sizeof(rspData));
 }
-
 /*
 * server接收client的分片并完成组包
 */
@@ -139,11 +138,11 @@ int server_recv(int fd, char * buf, int len)
         struct CmdReq * cmd = (struct CmdReq *)(frag + 1);
         const int datalen = data->len - sizeof(*frag);
         //如果收到hello, 丢弃
-        if(isHello(cmd))
+        if(isHello(cmd) || isNewSession(cmd))
         {
             if(server_reply_ack_with_data(fd, 0, frag) <= 0)
             {
-                perror("server_reply_ack_with_data");
+                perror("server_reply_null_data");
             }
             freeDataBuffer(data);
             continue;
@@ -228,8 +227,9 @@ int server_send(int fd, const char * p, int len)
         }
 
         struct CmdReq * cmd = (struct CmdReq *)(frag + 1);
-        if (!isHello(cmd))
+        if (!isHello(cmd) && !isNewSession(cmd))
         {
+            debug("server_send: not a hello or session-established msg, code=%d, seqid=%d\n", cmd->code, frag->seqId);
             goto ack;
         }
                 
@@ -237,7 +237,7 @@ int server_send(int fd, const char * p, int len)
         DataBuffer serverData = {p, len};
         return server_reply_ack_with_data(fd, &serverData, frag);
     ack:
-        //ack分支是错误分支,不应该退出循环,应该继续重试
+        //emptyRsp分支是错误分支,不应该退出循环,应该继续重试
         server_reply_ack_with_data(fd, 0, frag);
         freeDataBuffer(data);
     }

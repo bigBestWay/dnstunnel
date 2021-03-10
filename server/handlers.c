@@ -15,6 +15,7 @@
 #include <stdio.h>
 
 extern int s_currentSession;
+
 __thread unsigned short g_tls_myclientid = 0; 
 
 struct WorkerArgs
@@ -68,6 +69,8 @@ void * gateway(void * arg)
         const char fragEndFlag = frag->end;
         const unsigned short clientid = ntohs(frag->clientID);
 
+        debug("gateway: clientid=%d, seqid=%d\n", clientid, frag->seqId);
+
         DataBuffer * data = (DataBuffer *)malloc(sizeof(DataBuffer));
         data->ptr = payload;
         data->len = pureLen; //FRAGMENT_CTRL + PAYLOAD
@@ -112,10 +115,17 @@ void * gateway(void * arg)
         }
         else 
         {
-            //新启动线程
-            if (isHello((const struct CmdReq *)(frag + 1)))
+            //新启动线程，接收到SERVER_CMD_NEWSESSION时
+            const struct CmdReq * req = (struct CmdReq *)(frag + 1);
+            if (isNewSession(req))
             {
+                debug("session establish for cliendid %d. next seqid %d\n", clientid, frag->seqId + 1);
                 start_new_worker(clientid);
+                sleep(1);
+            }
+            else
+            {
+                debug("Handlers discard clientid %d, seqid=%d, code=%d\n", clientid, frag->seqId, req->code);
             }
             
             freeDataBuffer(data);

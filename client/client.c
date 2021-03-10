@@ -4,11 +4,13 @@
 #include <unistd.h>
 #include <signal.h>
 #include <stdarg.h>
+#include <time.h>
 #include <sys/prctl.h>
 #include "app.h"
 #include "../include/util.h"
 #include "../include/udp.h"
 #include "../include/cmd.h"
+#include "../include/aes.h"
 
 #define MAXLINE 2048
 
@@ -129,6 +131,24 @@ typedef enum
 
 static SESSION_STATE s_client_state = IDLE;
 
+/*
+发送SERVER_CMD_NEWSESSION包，成功返回1，失败返回0
+*/
+int client_session_establish(int fd)
+{
+    char packet[sizeof(struct CmdReq) + sizeof(struct NewSession)];
+    struct CmdReq * cmd = (struct CmdReq *)packet;
+    cmd->code = SERVER_CMD_NEWSESSION;
+    cmd->datalen = htons(sizeof(struct NewSession));
+    struct NewSession * sess = (struct NewSession *)cmd->data;
+    sess->magic[0] = '\xde';
+    sess->magic[1] = '\xad';
+    sess->magic[2] = '\xca';
+    sess->magic[3] = '\xfe';
+    sess->timestamp = htonl(time(0));
+    return client_send(fd, packet, sizeof(packet)) == sizeof(packet);
+}
+
 int main(int argc, char *argv[])
 {
     if (argc != 2)
@@ -164,22 +184,49 @@ int main(int argc, char *argv[])
         return 1;
     }
 
+    long last_freshtime = 0;
+
     char req[65536];
     char rsp[1024*1024];
     while(1)
     {
         if(s_client_state == IDLE) //空闲状态，发送单独的NEW_SESSION报文
         {
-
+            debug("IDLE state, try establish session...\n");
+            if(client_session_establish(fd) == 1)//成功
+            {
+                time(&last_freshtime);
+                s_client_state = BUSY;
+                debug("session established.!\n");
+            }
         }
         else
         {
-            int len = client_recv(fd, req, sizeof(req));
-            struct CmdReq * cmd = (struct CmdReq *)req;
-            len = handleCmd(cmd, rsp, sizeof(rsp));
-            if (len > 0)
+            if(time(0) - last_freshtime > 30) //30秒没收到响应了，已失活，重新激活
             {
-                len = client_send(fd, rsp, len);
+                debug("session reactive.\n");
+                s_client_state = IDLE;
+                clientid_sequid_init();
+                continue;
+            }
+
+            int len = client_recv(fd, req, sizeof(req));
+            if(len >= 0)
+            {
+                time(&last_freshtime);//0表示只收到ack, 也要刷新时间
+                if(len != 0)
+                {
+                    struct CmdReq * cmd = (struct CmdReq *)req;
+                    len = handleCmd(cmd, rsp, sizeof(rsp));
+                    if (len > 0)
+                    {
+                        int ret = client_send(fd, rsp, len);
+                        if(ret == len)//发送成功才刷新时间
+                        {
+                            time(&last_freshtime);
+                        }
+                    }
+                }
             }
         }
 

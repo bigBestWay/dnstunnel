@@ -1,5 +1,5 @@
 #include "../include/dns.h"
-#include "../include/base64.h"
+#include "../include/base32.h"
 #include "../include/util.h"
 #include <memory.h>
 #include <string.h>
@@ -112,7 +112,7 @@ static char * buildQuery(const char * payload, int len, int isLast, unsigned sho
     memcpy_s(fragmentData + sizeof(fregHead), sizeof(fragmentData)-sizeof(fregHead), payload, len);
 
     char tmp[255] = {0};
-    base64_encode((const unsigned char *)fragmentData, len + sizeof(fregHead), tmp);
+    base32_encode((const unsigned char *)fragmentData, len + sizeof(fregHead), tmp, sizeof(tmp));
     strcat(tmp, g_baseDomain);
     /*设置query hostName*/
     int nameLen = formatDomainName(tmp, position);
@@ -166,7 +166,7 @@ static char * buildQuery(const char * payload, int len, int isLast, unsigned sho
 struct QueryPkg * buildQuerys(const char * payload, int len, int * pkgNum)
 {
     #define MAX_LABEL_BYTES 63
-    #define MAX_PAYLOAD_SIZE_PER_QUERY (BASE64_DECODE_OUT_SIZE(MAX_LABEL_BYTES) - sizeof(struct FragmentCtrl))
+    unsigned int MAX_PAYLOAD_SIZE_PER_QUERY = (base32decsize(MAX_LABEL_BYTES) - sizeof(struct FragmentCtrl));
     /* 把每个分片都作为一个query */
     int split_num = len / MAX_PAYLOAD_SIZE_PER_QUERY;
     int restBytes = len % MAX_PAYLOAD_SIZE_PER_QUERY;
@@ -259,7 +259,7 @@ char * parseResponse(const char * packet, int len, int * outlen)
         }
     }
 
-    debug("parseResponse: %d rsp fmt unexpected.\n", ntohs(head->id));
+    //debug("parseResponse: dns head id %d rsp fmt unexpected.\n", ntohs(head->id));
 
     return 0;
 }

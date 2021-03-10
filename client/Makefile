@@ -1,7 +1,7 @@
 CPP      = g++
 CC       = gcc
-OBJ      = ../common/base64.o dns.o client.o ../common/util.o ../common/udp.o app.o cmd.o ../common/aes.o
-LINKOBJ  = ../common/base64.o dns.o client.o ../common/util.o ../common/udp.o app.o cmd.o ../common/aes.o /usr/lib/x86_64-linux-gnu/libz.a
+OBJ      = ../common/base32.o dns.o client.o ../common/util.o ../common/udp.o app.o cmd.o ../common/aes.o
+LINKOBJ  = ../common/base32.o dns.o client.o ../common/util.o ../common/udp.o app.o cmd.o ../common/aes.o /usr/lib/x86_64-linux-gnu/libz.a
 LIBS     = 
 INCS     = -I../include
 CXXINCS  = 
@@ -11,6 +11,7 @@ CFLAGS   = $(INCS) -Wall
 ifeq ($(debug),yes)
 CFLAGS   += -g -DDEBUG=1
 endif
+CFLAGS   += -DAESKEY=$(aeskey)
 LDFLAGS  = -static -Wl,--as-needed -Wl,--exclude-libs=ALL
 RM       = rm -f
 
@@ -24,8 +25,8 @@ clean: clean-custom
 $(BIN): $(OBJ)
 	$(CC) $(LDFLAGS) $(LINKOBJ) -o $(BIN) $(LIBS)
 
-base64.o: ../common/base64.c
-	$(CC) -c ../common/base64.c -o ../common/base64.o $(CFLAGS)
+base32.o: ../common/base32.c
+	$(CC) -c ../common/base32.c -o ../common/base32.o $(CFLAGS)
 
 dns.o: dns.c
 	$(CC) -c dns.c -o dns.o $(CFLAGS)
