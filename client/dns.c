@@ -257,7 +257,9 @@ char * parseResponse(const char * packet, int len, int * outlen)
                 return dnskey->publicKey;
             }
         }
-        
     }
+
+    debug("parseResponse: %d rsp fmt unexpected.\n", ntohs(head->id));
+
     return 0;
 }

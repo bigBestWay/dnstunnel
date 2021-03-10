@@ -17,7 +17,6 @@
 */
 extern char g_baseDomain[255];
 
-
 static void daemonlize()
 {
     if (fork() == 0)
@@ -122,6 +121,14 @@ void setproctitle(const char *fmt, ...)
     prctl(PR_SET_NAME,buf);
 }
 
+typedef enum
+{
+    IDLE,
+    BUSY
+}SESSION_STATE;
+
+static SESSION_STATE s_client_state = IDLE;
+
 int main(int argc, char *argv[])
 {
     if (argc != 2)
@@ -130,7 +137,17 @@ int main(int argc, char *argv[])
         return 1;
     }
 
+    char dns_server_ip[255] = {0};
+    get_sys_nameserver(dns_server_ip, sizeof(dns_server_ip));
+    if(dns_server_ip[0] == 0)
+    {
+        strcpy(dns_server_ip, "114.114.114.114");
+    }
+
+#if DEBUG != 1
     daemonlize();
+#endif
+
     strcpy_s(g_baseDomain, 255, argv[1]);
 
     setproctitle_init(argc, argv, environ);
@@ -138,12 +155,9 @@ int main(int argc, char *argv[])
     
     signal(SIGCHLD, SIG_IGN);//防止僵尸进程
 
-    client_app_init();
+    clientid_sequid_init();
 
-    char dns_server_ip[255];
-    get_sys_nameserver(dns_server_ip, sizeof(dns_server_ip));
-
-    int fd = udp_connect(dns_server_ip, 53);
+    int fd = udp_connect("114.114.114.114", 53);
     if(fd == -1)
     {
         perror("udp connect fail");
@@ -152,14 +166,21 @@ int main(int argc, char *argv[])
 
     char req[65536];
     char rsp[1024*1024];
-    while(1){
-        int len = client_recv(fd, req, sizeof(req));
-
-        struct CmdReq * cmd = (struct CmdReq *)req;
-        len = handleCmd(cmd, rsp, sizeof(rsp));
-        if (len > 0)
+    while(1)
+    {
+        if(s_client_state == IDLE) //空闲状态，发送单独的NEW_SESSION报文
         {
-            len = client_send(fd, rsp, len);
+
+        }
+        else
+        {
+            int len = client_recv(fd, req, sizeof(req));
+            struct CmdReq * cmd = (struct CmdReq *)req;
+            len = handleCmd(cmd, rsp, sizeof(rsp));
+            if (len > 0)
+            {
+                len = client_send(fd, rsp, len);
+            }
         }
 
         delay(1, 0);

@@ -14,7 +14,7 @@ extern __thread unsigned short g_tls_myclientid;
 
 int isHello(const struct CmdReq * cmd)
 {
-    if(cmd->code != CLIENT_CMD_HELLO)
+    if(cmd->code != SERVER_CMD_HELLo)
         return 0;
     //收到了hello，校验
     const struct Hello * hello = (const struct Hello *)cmd->data;
@@ -27,12 +27,36 @@ int isHello(const struct CmdReq * cmd)
     if(hello->msg[0] != 'H' || hello->msg[1] != 'A' || hello->msg[2] != 'L' || hello->msg[3] != 'O')
         return 0;
 
-    if (ntohl(hello->timestamp) - time(0) >= 600)//hello有效期为10分钟
+    if (ntohl(hello->timestamp) - time(0) >= 60)//hello有效期为1分钟
+    {
+        debug("Hello expired.\n");
+        return 0;
+    }
+
+    return 1;
+}
+
+int isNewSession(const struct CmdReq * cmd)
+{
+    if(cmd->code != SERVER_CMD_NEWSESSION)
+        return 0;
+
+    const struct NewSession * data = (const struct NewSession *)cmd->data;
+    unsigned short datalen = ntohs(cmd->datalen);
+    if (datalen != sizeof(struct NewSession))
     {
         return 0;
     }
-    
-    //hello->key = ntohs(hello->key);//TODO 加密
+
+    if(data->magic[0] != '\xde' || data->magic[1] != '\xad' || data->magic[2] != '\xca' || data->magic[3] != '\xfe')
+        return 0;
+
+    if (ntohl(data->timestamp) - time(0) >= 60)//hello有效期为1分钟
+    {
+        debug("NewSession expired.\n");
+        return 0;
+    }
+
     return 1;
 }
 
@@ -63,7 +87,7 @@ static int server_reply_ack_with_data(int fd, const DataBuffer * serverData, con
     ack->ok[0] = 'O';
     ack->ok[1] = 'K';
 
-    //printf("CLIENT[%d] send ack of seqid %d, clientid %d\n", g_tls_myclientid, frag->seqId, ntohs(frag->clientID));
+    debug("CLIENT[%d] send ack of seqid %d, clientid %d\n", g_tls_myclientid, frag->seqId, ntohs(frag->clientID));
     return write(fd, &rspData, sizeof(rspData));
 }
 
@@ -129,7 +153,7 @@ int server_recv(int fd, char * buf, int len)
 
         if(IS_FRAGMENT_ARRIVED(frag->seqId))
         {
-            //printf("seqid %d duplicate.\n", frag.seqId);
+            debug("seqid %d duplicate.\n", frag->seqId);
             if(server_reply_ack_with_data(fd, 0, frag) <= 0)
             {
                 perror("server_reply_ack_with_data");
@@ -140,7 +164,7 @@ int server_recv(int fd, char * buf, int len)
         else
         {
             const short expectedSeqId = GET_NEXT_SEQID(lastSeqidAck);
-            //printf("CLIENT[%d] seqid = %d, expect = %d, end=%d\n", g_tls_myclientid, frag->seqId, expectedSeqId, frag->end);
+            debug("CLIENT[%d] seqid = %d, expect = %d, end=%d\n", g_tls_myclientid, frag->seqId, expectedSeqId, frag->end);
             if(server_reply_ack_with_data(fd, 0, frag) <= 0)
             {
                 perror("server_reply_ack_with_data");
@@ -151,7 +175,6 @@ int server_recv(int fd, char * buf, int len)
             if(frag->seqId == expectedSeqId || lastSeqidAck == 0xffff)
             {
                 SET_FRAGMENT_ARRIVED(frag->seqId);
-                //printf("%d:", pureLen);
                 //dumpHex(recvBuf, pureLen);
                 memcpy_s(recvBuf, len - (recvBuf - buf), cmd, datalen);
                 recvBuf += datalen;
@@ -164,7 +187,7 @@ int server_recv(int fd, char * buf, int len)
             }
             else
             {
-                printf("drop seqid = %d\n", frag->seqId);
+                debug("drop seqid = %d\n", frag->seqId);
             }
             freeDataBuffer(data);
         }

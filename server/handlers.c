@@ -137,7 +137,7 @@ void * conn_handler(void * arg)
     time_t freshTime = time(0);
     while (1)
     {
-        if (time(0) - freshTime > 600)//超过1小时没消息，退出线程
+        if (time(0) - freshTime > 120)//超过2分钟没消息，退出线程
         {
             printf("session[%d] timeout\n", g_tls_myclientid);
             break;

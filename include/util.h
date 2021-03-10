@@ -7,6 +7,8 @@ typedef struct
     int len;
 }DataBuffer;
 
+unsigned short crc16(const void *buf, int size);
+
 void delay(long sec, long usec);
 
 void getRand(void * p, int size);
@@ -26,5 +28,11 @@ int readFile(const char * path, char * out, int len);
 DataBuffer * allocDataBuffer(int len);
 
 void freeDataBuffer(DataBuffer * buffer);
+
+#if DEBUG == 1
+#define debug(fmt, ...) printf(fmt, ##__VA_ARGS__)
+#else
+#define debug(fmt, ...)
+#endif
 
 #endif

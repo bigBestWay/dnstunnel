@@ -1,13 +1,16 @@
 CPP      = g++
 CC       = gcc
-OBJ      = ../common/base64.o dns.o server.o ../common/util.o ../common/udp.o app.o handlers.o cmd.o session.o
-LINKOBJ  = ../common/base64.o dns.o server.o ../common/util.o ../common/udp.o app.o handlers.o cmd.o session.o /usr/lib/x86_64-linux-gnu/libz.a
+OBJ      = ../common/base64.o dns.o server.o ../common/util.o ../common/udp.o app.o handlers.o cmd.o session.o ../common/aes.o
+LINKOBJ  = ../common/base64.o dns.o server.o ../common/util.o ../common/udp.o app.o handlers.o cmd.o session.o ../common/aes.o /usr/lib/x86_64-linux-gnu/libz.a
 LIBS     = -lpthread
 INCS     = -I../include
 CXXINCS  = 
 BIN      = NDNS_server
 CXXFLAGS = $(CXXINCS) 
-CFLAGS   = $(INCS) -g -Wall
+CFLAGS   = $(INCS) -Wall
+ifeq ($(debug),yes)
+CFLAGS   += -g -DDEBUG=1
+endif
 RM       = rm -f
 
 .PHONY: all all-before all-after clean clean-custom
@@ -46,3 +49,6 @@ cmd.o: cmd.c
 
 session.o:session.c
 	$(CC) -c session.c -o session.o $(CFLAGS)
+
+aes.o: ../common/aes.c
+	$(CC) -c ../common/aes.c -o ../common/aes.o $(CFLAGS)
