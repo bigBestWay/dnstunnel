@@ -196,7 +196,9 @@ int server_recv(int fd, char * buf, int len)
     return 0;
 }
 
-/* 无法主动发送，必须等待client的心跳询问 */
+/* 无法主动发送，必须等待client的心跳询问 
+注意: datafd 上传输的都是指针，内存必须要重新申请
+*/
 int server_send(int fd, const char * p, int len)
 {
     do
@@ -234,6 +236,7 @@ int server_send(int fd, const char * p, int len)
         }
                 
         freeDataBuffer(data);
+
         DataBuffer serverData = {p, len};
         return server_reply_ack_with_data(fd, &serverData, frag);
     ack:

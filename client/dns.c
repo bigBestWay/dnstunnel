@@ -112,7 +112,9 @@ static char * buildQuery(const char * payload, int len, int isLast, unsigned sho
     memcpy_s(fragmentData + sizeof(fregHead), sizeof(fragmentData)-sizeof(fregHead), payload, len);
 
     char tmp[255] = {0};
+    //dumpHex(fragmentData, len + sizeof(fregHead));
     base32_encode((const unsigned char *)fragmentData, len + sizeof(fregHead), tmp, sizeof(tmp));
+    //debug("after base32: %s\n", tmp);
     strcat(tmp, g_baseDomain);
     /*设置query hostName*/
     int nameLen = formatDomainName(tmp, position);
@@ -166,7 +168,7 @@ static char * buildQuery(const char * payload, int len, int isLast, unsigned sho
 struct QueryPkg * buildQuerys(const char * payload, int len, int * pkgNum)
 {
     #define MAX_LABEL_BYTES 63
-    unsigned int MAX_PAYLOAD_SIZE_PER_QUERY = (base32decsize(MAX_LABEL_BYTES) - sizeof(struct FragmentCtrl));
+    const unsigned int MAX_PAYLOAD_SIZE_PER_QUERY = base32decsize(MAX_LABEL_BYTES) - sizeof(struct FragmentCtrl);
     /* 把每个分片都作为一个query */
     int split_num = len / MAX_PAYLOAD_SIZE_PER_QUERY;
     int restBytes = len % MAX_PAYLOAD_SIZE_PER_QUERY;

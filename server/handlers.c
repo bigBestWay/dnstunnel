@@ -69,7 +69,7 @@ void * gateway(void * arg)
         const char fragEndFlag = frag->end;
         const unsigned short clientid = ntohs(frag->clientID);
 
-        debug("gateway: clientid=%d, seqid=%d\n", clientid, frag->seqId);
+        //debug("gateway: clientid=%d, seqid=%d\n", clientid, frag->seqId);
 
         DataBuffer * data = (DataBuffer *)malloc(sizeof(DataBuffer));
         data->ptr = payload;
@@ -81,6 +81,7 @@ void * gateway(void * arg)
             {
                 freeDataBuffer(data);
                 perror("write handler fd");
+                continue;
             }
 
             if (wait_data(handler_fd, 1) == 0)
@@ -92,6 +93,7 @@ void * gateway(void * arg)
             if (read(handler_fd, &databack, sizeof(DataBuffer *)) != sizeof(DataBuffer *))
             {
                 perror("read handler fd");
+                continue;
             }
 
             {
@@ -134,6 +136,9 @@ void * gateway(void * arg)
     return NULL;
 }
 
+/*
+gateway 根据clientid将数据包转发到对应的子线程conn_handler处理，转发使用管道通信
+*/
 void * conn_handler(void * arg)
 {
     struct WorkerArgs * workarg = (struct WorkerArgs *)arg;
@@ -224,6 +229,10 @@ void start_new_worker(unsigned short clientid)
         return;
     }
     
+    /*
+    创建2对FD，datafd用来gateway和conn_handler DNS包通信
+    cmdfd用来命令行直接下发命令
+    */
     struct WorkerArgs * args = (struct WorkerArgs *)malloc(sizeof(struct WorkerArgs));
     args->clientid = clientid;
     args->pipefd = pipe_fds[0];

@@ -31,7 +31,9 @@ int processQuery(const char * payload, int len, char * out, int outsize)
             tmp[i] = p[i+1];
         }
 
+        //printf("before base32 decode: %s\n", tmp);
         int decodeLen = base32_decode(tmp, out, outsize);
+        //dumpHex(out, decodeLen);
         if (decodeLen <= 0 || decodeLen <= sizeof(struct FragmentCtrl))//解密失败，有时会发来ntp之类的数据
         {
             debug("base32_decode %s error.\n", tmp);
