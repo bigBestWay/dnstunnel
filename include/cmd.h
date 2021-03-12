@@ -36,8 +36,8 @@ struct NewSession
 
 struct CmdAckPayload
 {
-    unsigned short seqid;
     char ok[2];//固定为字母OK
+    unsigned short seqid;
 };
 
 /****************************** 下面是底层无关的命令 *******************************/
@@ -58,11 +58,16 @@ enum ServerCmdId
     SERVER_CMD_GETCWD,
     SERVER_CMD_GETOUTERIP,
     SERVER_CMD_REVERSESHELL,
-    SERVER_CMD_NEWSESSION = 0xfd,
+
+    SERVER_CMD_SESSION_EXIT = 0xfb,
+    SERVER_CMD_NEWSESSION_SYNCACK = 0xfc,
+    SERVER_CMD_NEWSESSION_SYNC = 0xfd,
     SERVER_CMD_HELLo = 0xfe,
     SERVER_CMD_END = 0xff
 };
 
 int handleCmd(const struct CmdReq * cmd, char * out, int maxSize);
+
+void parseCmdRsp(const struct CmdReq * req, const char * data, int len);
 
 #endif

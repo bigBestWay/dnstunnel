@@ -7,6 +7,13 @@ typedef struct
     int len;
 }DataBuffer;
 
+typedef enum
+{
+    IDLE,
+    SYNC,
+    BUSY
+}SESSION_STATE;
+
 unsigned short crc16(const void *buf, int size);
 
 void delay(long sec, long usec);

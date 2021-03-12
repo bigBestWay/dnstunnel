@@ -27,6 +27,21 @@ struct WorkerArgs
 
 void start_new_worker(unsigned short clientid);
 
+int reply_ack_now(int fd, const struct FragmentCtrl * frag, char (*addr)[16])
+{
+    int ip = 0;
+    char recvBuf[65536];
+    struct CmdAckPayload * ack = (struct CmdAckPayload *)&ip;
+    ack->seqid = frag->seqId;
+    ack->ok[0] = 'O';
+    ack->ok[1] = 'K';
+
+    char * out = 0;
+    int outlen = 0;
+    out = buildResponseA(recvBuf, sizeof(recvBuf), &ip, &outlen);
+    return udp_send(fd, out, outlen, addr);
+}
+
 void * gateway(void * arg)
 {
     int fd = udp_bind(53);
@@ -41,6 +56,7 @@ void * gateway(void * arg)
         int hasData = wait_data(fd, 5);
         if(hasData == 0)
         {
+            //debug("gateway: wait_data timeout.\n");
             continue;
         }
         else if (hasData < 0)
@@ -69,14 +85,13 @@ void * gateway(void * arg)
         const char fragEndFlag = frag->end;
         const unsigned short clientid = ntohs(frag->clientID);
 
-        //debug("gateway: clientid=%d, seqid=%d\n", clientid, frag->seqId);
-
         DataBuffer * data = (DataBuffer *)malloc(sizeof(DataBuffer));
         data->ptr = payload;
         data->len = pureLen; //FRAGMENT_CTRL + PAYLOAD
         int handler_fd = get_data_fd(clientid);
         if (handler_fd > 0)
         {
+            debug("gateway: enqueue msg clientid=%d, seqid=%d\n", clientid, frag->seqId);
             if(write(handler_fd, &data, sizeof(DataBuffer *)) != sizeof(DataBuffer *))
             {
                 freeDataBuffer(data);
@@ -86,6 +101,7 @@ void * gateway(void * arg)
 
             if (wait_data(handler_fd, 1) == 0)
             {
+                debug("gateway: wait_data handle timeout.\n");
                 continue;
             }
             
@@ -110,7 +126,10 @@ void * gateway(void * arg)
                     out = buildResponseDnskey(recvBuf, recvLen, rspData, rspDataLen, &outlen);
                 }
 
-                udp_send(fd, out, outlen, addr);
+                if(udp_send(fd, out, outlen, addr) <= 0)
+                {
+                    perror("gateway udp_send:");
+                }
             }
 
             freeDataBuffer(databack);
@@ -119,15 +138,17 @@ void * gateway(void * arg)
         {
             //新启动线程，接收到SERVER_CMD_NEWSESSION时
             const struct CmdReq * req = (struct CmdReq *)(frag + 1);
-            if (isNewSession(req))
+            if (is_session_establish_sync(req))
             {
-                debug("session establish for cliendid %d. next seqid %d\n", clientid, frag->seqId + 1);
-                start_new_worker(clientid);
-                sleep(1);
+                debug("gateway: [[[ session establish sync for cliendid %d ]]].\n", clientid);
+                if(reply_ack_now(fd, frag, addr) > 0)
+                {
+                    start_new_worker(clientid);
+                }
             }
             else
             {
-                debug("Handlers discard clientid %d, seqid=%d, code=%d\n", clientid, frag->seqId, req->code);
+                debug("gateway: discard clientid %d, seqid=%d, code=%d\n", clientid, frag->seqId, req->code);
             }
             
             freeDataBuffer(data);
@@ -152,23 +173,15 @@ void * conn_handler(void * arg)
     time_t freshTime = time(0);
     while (1)
     {
-        if (time(0) - freshTime > 120)//超过2分钟没消息，退出线程
+        if (time(0) - freshTime > 20)//超过1分钟没消息，退出线程
         {
             printf("session[%d] timeout\n", g_tls_myclientid);
             break;
         }
         
-        int hasData = wait_data(datafd, 10);
-        if (hasData == 0)
-        {
-            continue;
-        }
-
-        time(&freshTime);
-
-        hasData = wait_data(cmdfd, 0);
+        int hascmd = wait_data(cmdfd, 0);
         int datalen = 0;
-        if (hasData == 1)
+        if (hascmd == 1)
         {
             datalen = read(cmdfd, dataReq, sizeof(dataReq));
             if (datalen <= 0)
@@ -176,20 +189,31 @@ void * conn_handler(void * arg)
                 perror("read");
                 continue;
             }
+
+            debug("CLIENT[%d] cmd=%d come\n", g_tls_myclientid, ((struct CmdReq *)dataReq)->code);
         }
-        else if(hasData == 0)
+        else if(hascmd == 0)
         {
             ((struct CmdReq *)dataReq)->code = 0;
             datalen = 8;
         }
+        else
+        {
+            debug("CLIENT[%d] conn_handler wait_data error!\n", g_tls_myclientid);
+            continue;
+        }
         
         int ret = server_send(datafd, dataReq, datalen);
-        if(ret <= 0)
+        if(ret < 0)
         {
             perror("server_send");
         }
+        else if(ret > 0)
+        {
+            time(&freshTime);
+        }
 
-        if (hasData)
+        if(hascmd)
         {
         recv:
             ret = server_recv(datafd, dataRsp, sizeof(dataRsp));
@@ -244,7 +268,7 @@ void start_new_worker(unsigned short clientid)
         perror("pthread_create");
     }
 
-    SessionEntry entry = {clientid, sock_pair[1], pipe_fds[1], 0, {0}};
+    SessionEntry entry = {clientid, sock_pair[1], pipe_fds[1], 0, SYNC, {0}};
     add_session(clientid, &entry);
 
     if (s_currentSession >= 0)

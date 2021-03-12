@@ -9,6 +9,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#include "session.h"
 
 extern __thread unsigned short g_tls_myclientid;
 
@@ -36,9 +37,9 @@ int isHello(const struct CmdReq * cmd)
     return 1;
 }
 
-int isNewSession(const struct CmdReq * cmd)
+int is_session_establish_sync(const struct CmdReq * cmd)
 {
-    if(cmd->code != SERVER_CMD_NEWSESSION)
+    if(cmd->code != SERVER_CMD_NEWSESSION_SYNC)
         return 0;
 
     const struct NewSession * data = (const struct NewSession *)cmd->data;
@@ -53,7 +54,31 @@ int isNewSession(const struct CmdReq * cmd)
 
     if (ntohl(data->timestamp) - time(0) >= 60)//有效期为1分钟
     {
-        debug("NewSession expired.\n");
+        debug("is_session_establish_sync expired.\n");
+        return 0;
+    }
+
+    return 1;
+}
+
+int is_session_establish_syncack(const struct CmdReq * cmd)
+{
+    if(cmd->code != SERVER_CMD_NEWSESSION_SYNCACK)
+        return 0;
+
+    const struct NewSession * data = (const struct NewSession *)cmd->data;
+    unsigned short datalen = ntohs(cmd->datalen);
+    if (datalen != sizeof(struct NewSession))
+    {
+        return 0;
+    }
+
+    if(data->magic[0] != '\xde' || data->magic[1] != '\xad' || data->magic[2] != '\xb' || data->magic[3] != '\xed')
+        return 0;
+
+    if (ntohl(data->timestamp) - time(0) >= 60)//有效期为1分钟
+    {
+        debug("is_session_establish_syncack expired.\n");
         return 0;
     }
 
@@ -102,21 +127,25 @@ int server_recv(int fd, char * buf, int len)
     #define SET_FRAGMENT_ARRIVED(seqid) (hashTable[seqid] = 1)
     unsigned short lastSeqidAck = 0xffff;//客户端是顺序发送的
     time_t refreshTime = time(0);
+    int ret = 0;
+    //debug("CLIENT[%d] server_recv: enter.\n", g_tls_myclientid);
     do
     {
-        if (time(0) - refreshTime >= 10)//自从收到上一个数据包到现在超过10秒
+        if (time(0) - refreshTime >= 300)//自从收到上一个数据包到现在超过5分钟
         {
+            debug("CLIENT[%d] server_recv: refreshTime timeout\n", g_tls_myclientid);
             break;
         }
         
-        int ret = wait_data(fd, 10);
+        ret = wait_data(fd, 10);
         if (ret == 0)
         {
-            break;
+            debug("CLIENT[%d] server_recv: wait_data timeout\n", g_tls_myclientid);
+            continue;
         }
         else if (ret < 0)
         {
-            return ret;
+            goto exit_lable;
         }
         
         //有数据
@@ -138,7 +167,7 @@ int server_recv(int fd, char * buf, int len)
         struct CmdReq * cmd = (struct CmdReq *)(frag + 1);
         const int datalen = data->len - sizeof(*frag);
         //如果收到hello, 丢弃
-        if(isHello(cmd) || isNewSession(cmd))
+        if(isHello(cmd) || is_session_establish_sync(cmd))
         {
             if(server_reply_ack_with_data(fd, 0, frag) <= 0)
             {
@@ -157,7 +186,8 @@ int server_recv(int fd, char * buf, int len)
             {
                 perror("server_reply_ack_with_data");
                 freeDataBuffer(data);
-                return -1;
+                ret = -1;
+                goto exit_lable;
             }
         }
         else
@@ -168,7 +198,8 @@ int server_recv(int fd, char * buf, int len)
             {
                 perror("server_reply_ack_with_data");
                 freeDataBuffer(data);
-                return -1;
+                ret = -1;
+                goto exit_lable;
             }
             //报文是客户端顺序发送的，因此接收到最后一个包时要校验与上一个包是不是顺序下来的，防止上次会话的包重传产生错误
             if(frag->seqId == expectedSeqId || lastSeqidAck == 0xffff)
@@ -181,7 +212,8 @@ int server_recv(int fd, char * buf, int len)
                 if (frag->end)
                 {
                     freeDataBuffer(data);
-                    return recvBuf - buf;
+                    ret = recvBuf - buf;
+                    goto exit_lable;
                 }
             }
             else
@@ -192,8 +224,11 @@ int server_recv(int fd, char * buf, int len)
         }
     }while (1);
 
+    ret = 0;
     printf("\nNetwork timeout\nSession[%d]>>", g_tls_myclientid);
-    return 0;
+exit_lable:
+    //debug("CLIENT[%d] server_recv: exit.\n", g_tls_myclientid);
+    return ret;
 }
 
 /* 无法主动发送，必须等待client的心跳询问 
@@ -201,11 +236,14 @@ int server_recv(int fd, char * buf, int len)
 */
 int server_send(int fd, const char * p, int len)
 {
+    int retry = 0;
     do
     {
         int ret = wait_data(fd, 5);
         if (ret == 0)
         {
+            debug("CLIENT[%d] server_send wait_data timeout\n", g_tls_myclientid);
+            ++ retry;
             continue;
         }
         else if (ret < 0)
@@ -224,27 +262,36 @@ int server_send(int fd, const char * p, int len)
         frag = (struct FragmentCtrl *)(data->ptr);
         if (ntohs(frag->clientID) != g_tls_myclientid)
         {
+            debug("frage->clientid[%d] != g_tls_myclientid[%d]\n", ntohs(frag->clientID), g_tls_myclientid);
             freeDataBuffer(data);
             continue;
         }
 
-        struct CmdReq * cmd = (struct CmdReq *)(frag + 1);
-        if (!isHello(cmd) && !isNewSession(cmd))
+        const struct CmdReq * cmd = (struct CmdReq *)(frag + 1);
+        int is_hello = isHello(cmd);
+        if (!is_hello && !is_session_establish_sync(cmd))
         {
             debug("server_send: not a hello or session-established msg, code=%d, seqid=%d\n", cmd->code, frag->seqId);
             goto ack;
         }
-                
-        freeDataBuffer(data);
+
+        if(is_hello && get_session_state(g_tls_myclientid) == SYNC)
+        {
+            debug("CLIENT[%d] set_session_state BUSY.\n", g_tls_myclientid);
+            set_session_state(g_tls_myclientid, BUSY);
+        }
 
         DataBuffer serverData = {p, len};
-        return server_reply_ack_with_data(fd, &serverData, frag);
+        ret = server_reply_ack_with_data(fd, &serverData, frag);
+        
+        freeDataBuffer(data);
+        return ret;
     ack:
         //emptyRsp分支是错误分支,不应该退出循环,应该继续重试
         server_reply_ack_with_data(fd, 0, frag);
         freeDataBuffer(data);
     }
-    while(1);
+    while(retry < 5);
 
     return 0;
 }

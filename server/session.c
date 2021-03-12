@@ -13,6 +13,21 @@ static int g_session_number = 0;
 static pthread_rwlock_t g_rwlock = PTHREAD_RWLOCK_INITIALIZER;
 static SessionEntry * g_sessionTable;
 
+void set_session_state(unsigned short clientid, int state)
+{
+    pthread_rwlock_wrlock(&g_rwlock);
+    g_sessionTable[clientid].state = state;
+    pthread_rwlock_unlock(&g_rwlock);
+}
+
+int get_session_state(unsigned short clientid)
+{
+    pthread_rwlock_rdlock(&g_rwlock);
+    int state = g_sessionTable[clientid].state;
+    pthread_rwlock_unlock(&g_rwlock);
+    return state;
+}
+
 void session_init()
 {
     if (pthread_rwlock_init(&g_rwlock, NULL) != 0)
@@ -45,6 +60,7 @@ void delete_session(unsigned short clientid)
     close(g_sessionTable[clientid].datafd);
     g_sessionTable[clientid].cmdfd = -1;
     g_sessionTable[clientid].datafd = -1;
+    g_sessionTable[clientid].state = IDLE;
     --g_session_number;
     pthread_rwlock_unlock(&g_rwlock);
 }
@@ -73,13 +89,14 @@ SessionList live_sessions()
     pthread_rwlock_rdlock(&g_rwlock);
     if (g_session_number != 0)
     {
-        list.size = g_session_number;
+        list.size = 0;
         int index = 0;
         for (int i = 0; i < MAX_SESSION_NUMBER; i++)
         {
-            if (g_sessionTable[i].cmdfd >= 0 && g_sessionTable[i].datafd >= 0)
+            if (g_sessionTable[i].cmdfd >= 0 && g_sessionTable[i].datafd >= 0 && g_sessionTable[i].state == BUSY)
             {
                 list.list[index++] = &g_sessionTable[i];
+                ++ list.size;
             }
         }
     }

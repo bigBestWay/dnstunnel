@@ -12,6 +12,7 @@
 
 extern short g_seq_number;
 extern unsigned short g_client_id;
+long g_client_timestamp = 0;
 
 void clientid_sequid_init()
 {
@@ -35,30 +36,36 @@ static int check_ack(unsigned short seqId, const char * payload, int len)
         if(seqId == ack->seqid)
             return 1;
     }
+    debug("check_ack false: seqid %d, ok[0]=%c, ok[1]=%c\n", ack->seqid, ack->ok[0], ack->ok[1]);
     return 0;
 }
 
 /*
-* 可靠发送，成功返回0,超时返回1,错误返回-1
+* 可靠发送，成功返回len,超时返回1,错误返回-1
 */
 static int client_send_reliable(int fd, unsigned short seqid, const char * packet, int len)
 {
     char tmp[1024];
     char * buffer = tmp;
     int bufferLen = sizeof(tmp);
-    int retry = 0;
+    int retry = 0, ret = 0;
+
     do
     {
+        debug("client_send_reliable: write packet seqid=%d.\n", seqid);
         if(write(fd, packet, len) <= 0)
         {
             perror("write");
             return -1;
         }
-
-        int ret = wait_data(fd, 5);//超时时限
+    wait_label:
+        ret = wait_data(fd, 5);//超时时限
         if(ret == 0)//超时重发
         {
+            debug("client_send_reliable wait_data timeout.\n");
             ++ retry;
+            if(retry > 5) //重试5次，超过结束
+                break;
             continue;
         }
         else if (ret == -1)
@@ -79,9 +86,13 @@ static int client_send_reliable(int fd, unsigned short seqid, const char * packe
         if (payload && check_ack(seqid, payload, payloadLen) == 1)
         {
             debug("get ack of %d\n", seqid);
-            return 0;
+            //每次正确收到ACK都刷新时间戳
+            time(&g_client_timestamp);
+            return len;
         }
-    }while(retry < 5);
+        
+        goto wait_label;
+    }while(1);
 
     debug("wait ack timeout %d\n", seqid);
     return -1;
@@ -95,24 +106,18 @@ int client_send(int fd, const char * p, int len)
 {
     int pkgNum = 0;
     struct QueryPkg * pkgs = buildQuerys(p, len, &pkgNum);
+    int ret = 0;
     for (int i = 0; i < pkgNum; i++)
     {
         debug("client_send seqid = %d\n", pkgs[i].seqId);
         //dumpHex(pkgs[i].payload, pkgs[i].len);
-        int ret = write(fd, pkgs[i].payload, pkgs[i].len);
-        if (ret <= 0)
-        {
-            perror("write");
-        }
-
-        ret = client_send_reliable(fd, pkgs[i].seqId, pkgs[i].payload, pkgs[i].len);
-        if (ret != 0)
+        ret = client_send_reliable(fd, pkgs[i].seqId, pkgs[i].payload, pkgs[i].len); 
+        free(pkgs[i].payload);
+        pkgs[i].payload = 0;
+        if (ret != pkgs[i].len)
         {
             return ret;
         }
-                
-        free(pkgs[i].payload);
-        pkgs[i].payload = 0;
     }
     free(pkgs);
 
@@ -150,16 +155,19 @@ int client_recv(int fd, char * p, int len)
                 perror("write");
                 break;
             }
-        
-            ret = wait_data(fd, 5);
+        wait_label:
+            ret = wait_data(fd, 2);
             if(ret < 0)
             {
                 break;
             }
             else if (ret == 0)//超时重发
             {
+                debug("client_recv: wait_data timeout.\n");
                 ret = -1;//important
                 ++ retry;
+                if(retry > 5)
+                    break;
                 continue;
             }
                 
@@ -175,20 +183,25 @@ int client_recv(int fd, char * p, int len)
             char * payload = parseResponse(buffer, recvLen, &outlen);
             if (payload && check_ack(pkgs[0].seqId, payload, outlen) == 1)
             {
-                debug("got hello ack %d!\n", pkgs[0].seqId);
-                if (outlen > sizeof(struct CmdAckPayload))
-                {
-                    memcpy_s(p, len, payload + sizeof(struct CmdAckPayload), outlen - sizeof(struct CmdAckPayload));
-                    ret = outlen - sizeof(struct CmdAckPayload);
-                }
-                else
+                if(outlen < sizeof(struct CmdAckPayload))
                 {
                     ret = -1;
+                    break;
+                }
+
+                debug("got hello ack %d!\n", pkgs[0].seqId);
+                time(&g_client_timestamp);
+                ret = outlen - sizeof(struct CmdAckPayload);
+                if(outlen > sizeof(struct CmdAckPayload))
+                {
+                    memcpy_s(p, len, payload + sizeof(struct CmdAckPayload), outlen - sizeof(struct CmdAckPayload));
                 }
 
                 break;
             }
-        } while (retry < 5);
+
+            goto wait_label;
+        } while (1);
         free(pkgs[0].payload);
         pkgs[0].payload = 0;
     }

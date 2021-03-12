@@ -7,6 +7,7 @@ typedef struct
     int datafd;
     int cmdfd;
     unsigned int ip;
+    int state;
     char hostname[255];
 }SessionEntry;
 
@@ -15,6 +16,10 @@ typedef struct
     const SessionEntry * list[65536];
     int size;
 }SessionList;
+
+int get_session_state(unsigned short clientid);
+
+void set_session_state(unsigned short clientid, int state);
 
 void session_init();
 

@@ -18,6 +18,7 @@
 * client端定时询问server，是否有命令需要执行
 */
 extern char g_baseDomain[255];
+extern long g_client_timestamp;
 
 static void daemonlize()
 {
@@ -123,22 +124,15 @@ void setproctitle(const char *fmt, ...)
     prctl(PR_SET_NAME,buf);
 }
 
-typedef enum
-{
-    IDLE,
-    BUSY
-}SESSION_STATE;
-
 static SESSION_STATE s_client_state = IDLE;
-
 /*
-发送SERVER_CMD_NEWSESSION包，成功返回1，失败返回0
+发送SERVER_CMD_NEWSESSION_SYNC包，成功返回1，失败返回0
 */
-int client_session_establish(int fd)
+int client_session_establish_sync(int fd)
 {
     char packet[sizeof(struct CmdReq) + sizeof(struct NewSession)];
     struct CmdReq * cmd = (struct CmdReq *)packet;
-    cmd->code = SERVER_CMD_NEWSESSION;
+    cmd->code = SERVER_CMD_NEWSESSION_SYNC;
     cmd->datalen = htons(sizeof(struct NewSession));
     struct NewSession * sess = (struct NewSession *)cmd->data;
     sess->magic[0] = '\xde';
@@ -184,7 +178,7 @@ int main(int argc, char *argv[])
         return 1;
     }
 
-    long last_freshtime = 0;
+    time(&g_client_timestamp);
 
     char req[65536];
     char rsp[1024*1024];
@@ -193,16 +187,14 @@ int main(int argc, char *argv[])
         if(s_client_state == IDLE) //空闲状态，发送单独的NEW_SESSION报文
         {
             debug("IDLE state, try establish session...\n");
-            if(client_session_establish(fd) == 1)//成功
+            if(client_session_establish_sync(fd) == 1)//成功
             {
-                time(&last_freshtime);
                 s_client_state = BUSY;
-                debug("session established.!\n");
             }
         }
         else
         {
-            if(time(0) - last_freshtime > 30) //30秒没收到响应了，已失活，重新激活
+            if(time(0) - g_client_timestamp > 30) //30秒没收到响应了，已失活，重新激活
             {
                 debug("session reactive.\n");
                 s_client_state = IDLE;
@@ -213,7 +205,6 @@ int main(int argc, char *argv[])
             int len = client_recv(fd, req, sizeof(req));
             if(len >= 0)
             {
-                time(&last_freshtime);//0表示只收到ack, 也要刷新时间
                 if(len != 0)
                 {
                     struct CmdReq * cmd = (struct CmdReq *)req;
@@ -221,9 +212,9 @@ int main(int argc, char *argv[])
                     if (len > 0)
                     {
                         int ret = client_send(fd, rsp, len);
-                        if(ret == len)//发送成功才刷新时间
+                        if(ret != len)//发送失败
                         {
-                            time(&last_freshtime);
+                            debug("client_send fail result=%d.\n", ret);
                         }
                     }
                 }

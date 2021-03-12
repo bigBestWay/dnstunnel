@@ -4,7 +4,10 @@
 
 int isHello(const struct CmdReq * cmd);
 
-int isNewSession(const struct CmdReq * cmd);
+int is_session_establish_sync(const struct CmdReq * cmd);
+
+int is_session_establish_syncack(const struct CmdReq * cmd);
+
 /*
 * 应用层协议封装，完成可靠传输
 */

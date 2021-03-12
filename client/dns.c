@@ -111,10 +111,15 @@ static char * buildQuery(const char * payload, int len, int isLast, unsigned sho
     memcpy_s(fragmentData, sizeof(fragmentData), &fregHead, sizeof(fregHead));
     memcpy_s(fragmentData + sizeof(fregHead), sizeof(fragmentData)-sizeof(fregHead), payload, len);
 
+    int payloadlen = len + sizeof(fregHead);
+    unsigned short crc = crc16(fragmentData, payloadlen);
+    memcpy_s(fragmentData + payloadlen, 2, &crc, 2);
+    payloadlen += 2;
+
     char tmp[255] = {0};
-    //dumpHex(fragmentData, len + sizeof(fregHead));
-    base32_encode((const unsigned char *)fragmentData, len + sizeof(fregHead), tmp, sizeof(tmp));
-    //debug("after base32: %s\n", tmp);
+    //dumpHex(fragmentData, payloadlen);
+    base32_encode((const unsigned char *)fragmentData, payloadlen, tmp, sizeof(tmp));
+    //debug("after base32[%d]: %s\n", strlen(tmp), tmp);
     strcat(tmp, g_baseDomain);
     /*设置query hostName*/
     int nameLen = formatDomainName(tmp, position);
@@ -168,7 +173,8 @@ static char * buildQuery(const char * payload, int len, int isLast, unsigned sho
 struct QueryPkg * buildQuerys(const char * payload, int len, int * pkgNum)
 {
     #define MAX_LABEL_BYTES 63
-    const unsigned int MAX_PAYLOAD_SIZE_PER_QUERY = base32decsize(MAX_LABEL_BYTES) - sizeof(struct FragmentCtrl);
+    #define CRC16_SIZE 2
+    const unsigned int MAX_PAYLOAD_SIZE_PER_QUERY = base32decsize(MAX_LABEL_BYTES) - sizeof(struct FragmentCtrl) - CRC16_SIZE; //33
     /* 把每个分片都作为一个query */
     int split_num = len / MAX_PAYLOAD_SIZE_PER_QUERY;
     int restBytes = len % MAX_PAYLOAD_SIZE_PER_QUERY;
@@ -261,7 +267,8 @@ char * parseResponse(const char * packet, int len, int * outlen)
         }
     }
 
-    //debug("parseResponse: dns head id %d rsp fmt unexpected.\n", ntohs(head->id));
+    debug("parseResponse: dns head id %d rsp fmt unexpected.\n", ntohs(head->id));
 
     return 0;
 }
+

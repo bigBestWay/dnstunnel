@@ -163,6 +163,7 @@ void freeDataBuffer(DataBuffer * buffer)
     if(buffer)
     {
         free(buffer->ptr);
+        buffer->ptr = 0;
         free(buffer);
     }
 }
