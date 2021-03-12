@@ -1,7 +1,7 @@
 CPP      = g++
 CC       = gcc
-OBJ      = ../common/base32.o dns.o server.o ../common/util.o ../common/udp.o app.o handlers.o cmd.o session.o ../common/aes.o
-LINKOBJ  = ../common/base32.o dns.o server.o ../common/util.o ../common/udp.o app.o handlers.o cmd.o session.o ../common/aes.o /usr/lib/x86_64-linux-gnu/libz.a
+OBJ      = ../common/base32.o dns.o server.o ../common/util.o ../common/udp.o app.o gateway.o worker.o cmd.o session.o ../common/aes.o
+LINKOBJ  = ../common/base32.o dns.o server.o ../common/util.o ../common/udp.o app.o gateway.o worker.o cmd.o session.o ../common/aes.o /usr/lib/x86_64-linux-gnu/libz.a
 LIBS     = -lpthread
 INCS     = -I../include
 CXXINCS  = 
@@ -42,8 +42,11 @@ udp.o: ../common/udp.c
 app.o: app.c
 	$(CC) -c app.c -o app.o $(CFLAGS)
 
-handlers.o: handlers.c
-	$(CC) -c handlers.c -o handlers.o $(CFLAGS)
+gateway.o: gateway.c
+	$(CC) -c gateway.c -o gateway.o $(CFLAGS)
+
+worker.o: worker.c
+	$(CC) -c worker.c -o worker.o $(CFLAGS)
 
 cmd.o: cmd.c
 	$(CC) -c cmd.c -o cmd.o $(CFLAGS)

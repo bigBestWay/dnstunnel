@@ -12,6 +12,7 @@
 #include "session.h"
 
 extern __thread unsigned short g_tls_myclientid;
+extern __thread time_t g_alive_timestamp;
 
 int isHello(const struct CmdReq * cmd)
 {
@@ -102,12 +103,11 @@ int server_recv(int fd, char * buf, int len)
     #define IS_FRAGMENT_ARRIVED(seqid) (hashTable[seqid] != 0)
     #define SET_FRAGMENT_ARRIVED(seqid) (hashTable[seqid] = 1)
     unsigned short lastSeqidAck = 0xffff;//客户端是顺序发送的
-    time_t refreshTime = time(0);
     int ret = 0;
     //debug("CLIENT[%d] server_recv: enter.\n", g_tls_myclientid);
     do
     {
-        if (time(0) - refreshTime >= 300)//自从收到上一个数据包到现在超过5分钟
+        if (time(0) - g_alive_timestamp >= 300)//自从收到上一个数据包到现在超过5分钟
         {
             debug("CLIENT[%d] server_recv: refreshTime timeout\n", g_tls_myclientid);
             break;
@@ -153,7 +153,7 @@ int server_recv(int fd, char * buf, int len)
             continue;
         }
 
-        time(&refreshTime);
+        time(&g_alive_timestamp);
 
         if(IS_FRAGMENT_ARRIVED(frag->seqId))
         {
