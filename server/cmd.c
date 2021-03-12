@@ -12,8 +12,6 @@
 #include "session.h"
 #include <arpa/inet.h>
 
-int s_currentSession = -1;
-
 /*
     process_getuid, //SERVER_CMD_GETUID
     process_upload, //SERVER_CMD_UPLOAD
@@ -53,7 +51,7 @@ static struct
 };
 
 //-1 没有命令
-static int findCmd(const char * cmd, int * argc)
+int findCmd(const char * cmd, int * argc)
 {
     for (int i = 0; i < sizeof(g_cmdUsageTable)/sizeof(g_cmdUsageTable[0]); i++)
     {
@@ -71,7 +69,7 @@ static int findCmd(const char * cmd, int * argc)
     return -1;
 }
 
-static void usage()
+void usage()
 {
     for (int i = 0; i < sizeof(g_cmdUsageTable)/sizeof(g_cmdUsageTable[0]); i++)
     {
@@ -84,7 +82,7 @@ static void usage()
     }
 }
 
-static void help(int code)
+void help(int code)
 {
     printf("Usage: %s", g_cmdUsageTable[code].cmd);
     for (int j = 0; j < sizeof(g_cmdUsageTable[code].argv)/sizeof(char *) && g_cmdUsageTable[code].argv[j]; j++)
@@ -94,7 +92,7 @@ static void help(int code)
     printf("\n");
 }
 
-static int parseCmdLine(char * cmdline, char *argv[])
+int parseCmdLine(char * cmdline, const char *argv[])
 {
     int argc = 0;
     int findWord = 0;
@@ -117,7 +115,7 @@ static int parseCmdLine(char * cmdline, char *argv[])
     return argc;
 }
 
-static int buildCmdReq(unsigned char code, const char *argv[], int argc, char * out, int maxSize)
+int buildCmdReq(unsigned char code, const char *argv[], int argc, char * out, int maxSize)
 {
     struct CmdReq * cmd = (struct CmdReq *)out;
     cmd->code = code;
@@ -196,25 +194,31 @@ static int buildCmdReq(unsigned char code, const char *argv[], int argc, char * 
     return offset + sizeof(*cmd);
 }
 
-void parseCmdRsp(const struct CmdReq * req, const char * data, int len)
+/*
+    返回一个用于屏幕显示的字符串指针
+*/
+char * parseCmdRsp(const struct CmdReq * req, const char * data, int len)
 {
     struct CmdRsp * rsp = (struct CmdRsp *)data;
     unsigned int datalen = ntohl(rsp->datalen);
     if (datalen > len)
     {
         printf("\nRecv CmdRsp length error\n");
-        return;
+        return 0;
     }
-    
+
+    char * msg = (char *)malloc(255);
+    memset(msg, 0, 255);
+
     if (rsp->errNo == CUSTOM_ERRNO)
     {
         rsp->data[datalen] = 0;
-        printf("\nRemote error: %s.\n", rsp->data);
+        snprintf(msg, 255, "Remote error: %s.\n", rsp->data);
     }
     else if(rsp->errNo != 0)
     {
         const char * errMsg = strerror(rsp->errNo);
-        printf("\nRemote error: %s.\n", errMsg);
+        snprintf(msg, 255, "Remote error: %s.\n", errMsg);
     }
     else
     {
@@ -236,18 +240,20 @@ void parseCmdRsp(const struct CmdReq * req, const char * data, int len)
                     }
                     else
                     {
-                        printf("\nDownload remote %s to %s success\n", remoteName, localName);
+                        snprintf(msg, 255, "Download remote %s to %s success\n", remoteName, localName);
                     }
                 }
                 else
                 {
                     plain[plainLen] = 0;
-                    printf("\n%s\n", plain);
+                    free(msg);
+                    msg = (char *)malloc(plainLen + 10);
+                    snprintf(msg, plainLen + 10, "\n%s\n", plain);
                 }
             }
             else
             {
-                printf("\nuncompress %d, rsplen %d\n", ret, datalen);
+                snprintf(msg, 255, "uncompress %d, rsplen %d\n", ret, datalen);
             }
             free(plain);
         }
@@ -261,144 +267,20 @@ void parseCmdRsp(const struct CmdReq * req, const char * data, int len)
                 char * ipv4 = inet_ntoa(addr);
                 char * hostname = (char *)(ip + 1);
                 rsp->data[datalen] = 0;
-                printf("\nhostname:%s,ip:%s\n", hostname, ipv4);
+                snprintf(msg, 255, "hostname:%s,ip:%s\n", hostname, ipv4);
             }
             else
             {
                 rsp->data[datalen] = 0;
-                printf("\n%s\n", rsp->data);
+                free(msg);
+                msg = (char *)malloc(datalen + 10);
+                snprintf(msg, datalen + 10, "%s\n", rsp->data);
             }
         }
     }
+
+    return msg;
 }
 
-static void UI_waiting()
-{
-    static char ch = '|';
-    //rewind(stdout);
-    //ftruncate(1, 0);
-    switch (ch)
-    {
-    case '|':
-        ch = '/';
-        break;
-	case '/':
-		ch = '-';
-		break;
-    case '-':
-        ch = '\\';
-        break;
-    case '\\':
-        ch = '|';
-    default:
-        break;
-    }
-    write(1, &ch, 1);
-}
 
-void startUI()
-{
-    while (1)
-    {
-        SessionList sessionList = live_sessions();
-        if (sessionList.size == 0)
-        {
-            UI_waiting();
-            delay(0, 1000);
-            fputs("\033[1D", stdout);
-            continue;
-        }
 
-        if (s_currentSession < 0) //如果未选择session，默认指定第一个
-        {
-            s_currentSession = sessionList.list[0]->clientid;
-        }
-        else
-        {
-            int valid = 0;
-            for (int i = 0; i < sessionList.size; i++)
-            {
-                if (sessionList.list[i]->clientid == s_currentSession)
-                {
-                    valid = 1;
-                    break;
-                }
-            }
-
-            if (!valid)
-            {
-                printf("session %d not valid\n", s_currentSession);
-                s_currentSession = sessionList.list[0]->clientid;
-            }
-        }
-        
-        printf("Session[%d]>>", s_currentSession);
-        char buffer[65536] = {0};
-        read(0, buffer, sizeof(buffer));
-        //最多5个参数
-        char * argv[6] = {0};
-        int argc1 = 0, argc2 = 0;
-        argc1 = parseCmdLine(buffer, argv);//包括了命令自身
-        if (argc1 == 0)
-        {
-            continue;
-        }
-        
-        int result = findCmd(argv[0], &argc2);
-        if (result < 0)
-        {
-            usage();
-            continue;
-        }
-        
-        if (argc1 - 1 < argc2)
-        {
-            help(result);
-            continue;
-        }
-
-        if (result == 0)//session管理命令
-        {
-            if (strcmp(argv[1], "list") == 0)
-            {
-                SessionList sessionList = live_sessions();
-                printf("clientid\tip\thostname\t\n");
-                const char * fmt = "%d\t%s\t%s\n";
-                for (int i = 0; i < sessionList.size; i++)
-                {
-                    struct in_addr addr;
-                    addr.s_addr = sessionList.list[i]->ip;
-                    char * ipv4 = inet_ntoa(addr);
-                    printf(fmt, sessionList.list[i]->clientid, ipv4, sessionList.list[i]->hostname);
-                }
-            }
-            else
-            {
-                int arg = atoi(argv[1]);
-                s_currentSession = arg;
-            }
-            continue;
-        }
-        
-        
-        unsigned char code = result;
-        int len = buildCmdReq(code, argv, argc1, buffer, sizeof(buffer));
-        if (len <= 0)
-        {
-            continue;
-        }
-        
-        int cmdfd = get_cmd_fd(s_currentSession);
-        if (cmdfd < 0)
-        {
-            perror("get_cmd_fd");
-            continue;
-        }
-        
-        len = write(cmdfd, buffer, len);
-        if (len <=0 )
-        {
-            perror("write");
-        }
-    }
-}

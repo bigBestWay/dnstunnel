@@ -9,19 +9,18 @@
 #include <time.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <arpa/inet.h>
 #include "app.h"
 #include <pthread.h>
 #include <sys/socket.h>
 #include <stdio.h>
 #include "worker.h"
 
-extern int s_currentSession;
-
 void start_new_worker(unsigned short clientid);
 
 int reply_ack_now(int fd, const struct FragmentCtrl * frag, char (*addr)[16])
 {
-    int ip = 0;
+    unsigned int ip = 0;
     char recvBuf[65536];
     struct CmdAckPayload * ack = (struct CmdAckPayload *)&ip;
     ack->seqid = frag->seqId;
@@ -151,18 +150,18 @@ void * gateway(void * arg)
 
 void start_new_worker(unsigned short clientid)
 {
-    int sock_pair[2];
-    int pipe_fds[2];
-    if(socketpair(AF_LOCAL, SOCK_STREAM, 0, sock_pair) < 0) 
+    int datafds[2];
+    int cmdfds[2];
+    if(socketpair(AF_LOCAL, SOCK_STREAM, 0, datafds) < 0) 
     { 
         perror("socketpair");
         return;
     }
 
     //printf("socketpair %d,%d\n", sock_pair[0], sock_pair[1]);
-    if (pipe(pipe_fds) < 0)
+    if(socketpair(AF_LOCAL, SOCK_STREAM, 0, cmdfds) < 0) 
     {
-        perror("pipe");
+        perror("socketpair");
         return;
     }
     
@@ -172,8 +171,8 @@ void start_new_worker(unsigned short clientid)
     */
     struct WorkerArgs * args = (struct WorkerArgs *)malloc(sizeof(struct WorkerArgs));
     args->clientid = clientid;
-    args->pipefd = pipe_fds[0];
-    args->sockfd = sock_pair[0];
+    args->cmdfd = cmdfds[0];
+    args->datafd = datafds[0];
 
     pthread_t tid;
     if(pthread_create(&tid, NULL, conn_handler, (void *)args) != 0)
@@ -181,11 +180,6 @@ void start_new_worker(unsigned short clientid)
         perror("pthread_create");
     }
 
-    SessionEntry entry = {clientid, sock_pair[1], pipe_fds[1], 0, SYNC, {0}};
+    SessionEntry entry = {clientid, datafds[1], cmdfds[1], 0, SYNC, {0}};
     add_session(clientid, &entry);
-
-    if (s_currentSession >= 0)
-    {
-        printf("\nNew session %d connected\nSession[%d]>>", clientid, s_currentSession);
-    }
 }

@@ -32,7 +32,7 @@ int processQuery(const char * payload, int len, char * out, int outsize)
         }
 
         //printf("before base32 decode: %s\n", tmp);
-        int decodeLen = base32_decode(tmp, out, outsize);        
+        int decodeLen = base32_decode((const uint8_t *)tmp, (uint8_t *)out, outsize);        
         if (decodeLen <= 0 || decodeLen <= sizeof(struct FragmentCtrl))//解密失败，有时会发来ntp之类的数据
         {
             debug("base32_decode %s error.\n", tmp);

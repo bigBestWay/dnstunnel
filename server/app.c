@@ -201,7 +201,6 @@ int server_recv(int fd, char * buf, int len)
     }while (1);
 
     ret = 0;
-    printf("\nNetwork timeout\nSession[%d]>>", g_tls_myclientid);
 exit_lable:
     //debug("CLIENT[%d] server_recv: exit.\n", g_tls_myclientid);
     return ret;
@@ -257,7 +256,7 @@ int server_send(int fd, const char * p, int len)
             set_session_state(g_tls_myclientid, BUSY);
         }
 
-        DataBuffer serverData = {p, len};
+        DataBuffer serverData = {(char *)p, len};
         ret = server_reply_ack_with_data(fd, &serverData, frag);
         
         freeDataBuffer(data);

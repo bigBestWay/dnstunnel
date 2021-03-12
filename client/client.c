@@ -5,6 +5,7 @@
 #include <signal.h>
 #include <stdarg.h>
 #include <time.h>
+#include <arpa/inet.h>
 #include <sys/prctl.h>
 #include "app.h"
 #include "../include/util.h"

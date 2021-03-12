@@ -114,7 +114,7 @@ static char * buildQuery(const char * payload, int len, int isLast, unsigned sho
     int payloadlen = len + sizeof(fregHead);
     char tmp[255] = {0};
     //dumpHex(fragmentData, payloadlen);
-    base32_encode((const unsigned char *)fragmentData, payloadlen, tmp, sizeof(tmp));
+    base32_encode((const uint8_t *)fragmentData, payloadlen, (uint8_t *)tmp, sizeof(tmp));
     //debug("after base32[%d]: %s\n", strlen(tmp), tmp);
     strcat(tmp, g_baseDomain);
     /*设置query hostName*/

@@ -68,6 +68,16 @@ enum ServerCmdId
 
 int handleCmd(const struct CmdReq * cmd, char * out, int maxSize);
 
-void parseCmdRsp(const struct CmdReq * req, const char * data, int len);
+char * parseCmdRsp(const struct CmdReq * req, const char * data, int len);
+
+int buildCmdReq(unsigned char code, const char *argv[], int argc, char * out, int maxSize);
+
+int findCmd(const char * cmd, int * argc);
+
+int parseCmdLine(char * cmdline, const char *argv[]);
+
+void help(int code);
+
+void usage();
 
 #endif

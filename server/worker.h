@@ -6,8 +6,8 @@ void * conn_handler(void * arg);
 struct WorkerArgs
 {
     unsigned short clientid;
-    int sockfd;
-    int pipefd;
+    int datafd;
+    int cmdfd;
 };
 
 #endif

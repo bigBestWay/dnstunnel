@@ -6,6 +6,7 @@
 #include <time.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <string.h>
 #include "app.h"
 #include <pthread.h>
 #include <sys/socket.h>
@@ -22,8 +23,8 @@ __thread time_t g_alive_timestamp = 0;
 void * conn_handler(void * arg)
 {
     struct WorkerArgs * workarg = (struct WorkerArgs *)arg;
-    const int datafd = workarg->sockfd;
-    const int cmdfd = workarg->pipefd;
+    const int datafd = workarg->datafd;
+    const int cmdfd = workarg->cmdfd;
     g_tls_myclientid = workarg->clientid;
     free(arg);
 
@@ -83,8 +84,24 @@ void * conn_handler(void * arg)
                 if(rsp->sid != req->sid)
                     goto recv;
 
-                parseCmdRsp(req, dataRsp, ret);
-                printf("Session[%d]>>", g_tls_myclientid);
+                char * output = parseCmdRsp(req, dataRsp, ret);
+                DataBuffer * data = (DataBuffer *)malloc(sizeof(DataBuffer));
+                data->ptr = output;
+                data->len = strlen(output) + 1;
+                if(write(cmdfd, &data, sizeof(data)) != sizeof(data))
+                {
+                    perror("parseCmdRsp write:");
+                }
+            }
+            else
+            {
+                const char tmout[] = "\nNetwork Timeout.\n";
+                DataBuffer * data = allocDataBuffer(sizeof(tmout));
+                snprintf(data->ptr, data->len, "%s", tmout);
+                if(write(cmdfd, &data, sizeof(data)) != sizeof(data))
+                {
+                    perror("parseCmdRsp write:");
+                }
             }
         }
     }
