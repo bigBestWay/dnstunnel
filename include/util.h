@@ -14,8 +14,6 @@ typedef enum
     BUSY
 }SESSION_STATE;
 
-unsigned short crc16(const void *buf, int size);
-
 void delay(long sec, long usec);
 
 void getRand(void * p, int size);

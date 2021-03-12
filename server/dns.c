@@ -32,22 +32,7 @@ int processQuery(const char * payload, int len, char * out, int outsize)
         }
 
         //printf("before base32 decode: %s\n", tmp);
-        int decodeLen = base32_decode(tmp, out, outsize);
-        if(decodeLen <= 2)
-        {
-            return -1;
-        }
-        decodeLen -= 2;
-        //dumpHex(out, decodeLen);
-        unsigned short crc = crc16(out, decodeLen);
-        unsigned short last2 = 0;
-        memcpy_s(&last2, 2, out + decodeLen, 2);
-        if (last2 != crc)
-        {
-            debug("CRC check fail, %u != %u.\n", crc, last2);
-            return -1;
-        }
-        
+        int decodeLen = base32_decode(tmp, out, outsize);        
         if (decodeLen <= 0 || decodeLen <= sizeof(struct FragmentCtrl))//解密失败，有时会发来ntp之类的数据
         {
             debug("base32_decode %s error.\n", tmp);
