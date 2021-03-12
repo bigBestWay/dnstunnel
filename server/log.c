@@ -32,9 +32,11 @@ void log_print(const char * fmt, ...)
 {
     char buffer[1024];
     int len = get_current_time(buffer, sizeof(buffer));
+    buffer[len++] = ' ';
     va_list ap;
     va_start(ap, fmt);
     vsnprintf(buffer + len, sizeof(buffer) - len, fmt, ap);
     va_end(ap);
     fputs(buffer, g_logfd);
+    fputs("\n", g_logfd);
 }
