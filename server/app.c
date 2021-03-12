@@ -169,7 +169,7 @@ int server_recv(int fd, char * buf, int len)
         else
         {
             const short expectedSeqId = GET_NEXT_SEQID(lastSeqidAck);
-            debug("CLIENT[%d] seqid = %d, expect = %d, end=%d\n", g_tls_myclientid, frag->seqId, expectedSeqId, frag->end);
+            //debug("CLIENT[%d] seqid = %d, expect = %d, end=%d\n", g_tls_myclientid, frag->seqId, expectedSeqId, frag->end);
             if(server_reply_ack_with_data(fd, 0, frag) <= 0)
             {
                 perror("server_reply_ack_with_data");

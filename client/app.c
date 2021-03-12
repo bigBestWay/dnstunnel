@@ -109,7 +109,6 @@ int client_send(int fd, const char * p, int len)
     int ret = 0;
     for (int i = 0; i < pkgNum; i++)
     {
-        debug("client_send seqid = %d\n", pkgs[i].seqId);
         //dumpHex(pkgs[i].payload, pkgs[i].len);
         ret = client_send_reliable(fd, pkgs[i].seqId, pkgs[i].payload, pkgs[i].len); 
         free(pkgs[i].payload);

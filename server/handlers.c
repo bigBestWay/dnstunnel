@@ -91,7 +91,7 @@ void * gateway(void * arg)
         int handler_fd = get_data_fd(clientid);
         if (handler_fd > 0)
         {
-            debug("gateway: enqueue msg clientid=%d, seqid=%d\n", clientid, frag->seqId);
+            //debug("gateway: enqueue msg clientid=%d, seqid=%d\n", clientid, frag->seqId);
             if(write(handler_fd, &data, sizeof(DataBuffer *)) != sizeof(DataBuffer *))
             {
                 freeDataBuffer(data);
