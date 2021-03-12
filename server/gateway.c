@@ -15,6 +15,7 @@
 #include <sys/socket.h>
 #include <stdio.h>
 #include "worker.h"
+#include "log.h"
 
 void start_new_worker(unsigned short clientid);
 
@@ -47,7 +48,7 @@ void * gateway(void * arg)
         int hasData = wait_data(fd, 5);
         if(hasData == 0)
         {
-            //debug("gateway: wait_data timeout.\n");
+            //log_print("gateway: wait_data timeout.");
             continue;
         }
         else if (hasData < 0)
@@ -82,7 +83,7 @@ void * gateway(void * arg)
         int handler_fd = get_data_fd(clientid);
         if (handler_fd > 0)
         {
-            //debug("gateway: enqueue msg clientid=%d, seqid=%d\n", clientid, frag->seqId);
+            //log_print("gateway: enqueue msg clientid=%d, seqid=%d", clientid, frag->seqId);
             if(write(handler_fd, &data, sizeof(DataBuffer *)) != sizeof(DataBuffer *))
             {
                 freeDataBuffer(data);
@@ -92,7 +93,7 @@ void * gateway(void * arg)
 
             if (wait_data(handler_fd, 1) == 0)
             {
-                debug("gateway: wait_data handle timeout.\n");
+                log_print("gateway: wait_data handle timeout.");
                 continue;
             }
             
@@ -131,7 +132,7 @@ void * gateway(void * arg)
             const struct CmdReq * req = (struct CmdReq *)(frag + 1);
             if (is_session_establish_sync(req))
             {
-                debug("gateway: [[[ session establish sync for cliendid %d ]]].\n", clientid);
+                log_print("gateway: [[[ session establish sync for cliendid %d ]]].", clientid);
                 if(reply_ack_now(fd, frag, addr) > 0)
                 {
                     start_new_worker(clientid);
@@ -139,7 +140,7 @@ void * gateway(void * arg)
             }
             else
             {
-                debug("gateway: discard clientid %d, seqid=%d, code=%d\n", clientid, frag->seqId, req->code);
+                log_print("gateway: discard clientid %d, seqid=%d, code=%d", clientid, frag->seqId, req->code);
             }
             
             freeDataBuffer(data);

@@ -10,6 +10,7 @@
 #include <string.h>
 #include <time.h>
 #include "session.h"
+#include "log.h"
 
 extern __thread unsigned short g_tls_myclientid;
 extern __thread time_t g_alive_timestamp;
@@ -31,7 +32,7 @@ int isHello(const struct CmdReq * cmd)
 
     if (ntohl(hello->timestamp) - time(0) >= 60)//hello有效期为1分钟
     {
-        debug("Hello expired.\n");
+        log_print("Hello expired.");
         return 0;
     }
 
@@ -55,7 +56,7 @@ int is_session_establish_sync(const struct CmdReq * cmd)
 
     if (ntohl(data->timestamp) - time(0) >= 60)//有效期为1分钟
     {
-        debug("is_session_establish_sync expired.\n");
+        log_print("is_session_establish_sync expired.");
         return 0;
     }
 
@@ -89,7 +90,7 @@ static int server_reply_ack_with_data(int fd, const DataBuffer * serverData, con
     ack->ok[0] = 'O';
     ack->ok[1] = 'K';
 
-    debug("CLIENT[%d] send ack of seqid %d, clientid %d\n", g_tls_myclientid, frag->seqId, ntohs(frag->clientID));
+    log_print("CLIENT[%d] send ack of seqid %d, clientid %d", g_tls_myclientid, frag->seqId, ntohs(frag->clientID));
     return write(fd, &rspData, sizeof(rspData));
 }
 /*
@@ -104,19 +105,19 @@ int server_recv(int fd, char * buf, int len)
     #define SET_FRAGMENT_ARRIVED(seqid) (hashTable[seqid] = 1)
     unsigned short lastSeqidAck = 0xffff;//客户端是顺序发送的
     int ret = 0;
-    //debug("CLIENT[%d] server_recv: enter.\n", g_tls_myclientid);
+    //log_print("CLIENT[%d] server_recv: enter.\n", g_tls_myclientid);
     do
     {
         if (time(0) - g_alive_timestamp >= 300)//自从收到上一个数据包到现在超过5分钟
         {
-            debug("CLIENT[%d] server_recv: refreshTime timeout\n", g_tls_myclientid);
+            log_print("CLIENT[%d] server_recv: refreshTime timeout", g_tls_myclientid);
             break;
         }
         
         ret = wait_data(fd, 10);
         if (ret == 0)
         {
-            debug("CLIENT[%d] server_recv: wait_data timeout\n", g_tls_myclientid);
+            log_print("CLIENT[%d] server_recv: wait_data timeout", g_tls_myclientid);
             continue;
         }
         else if (ret < 0)
@@ -157,7 +158,7 @@ int server_recv(int fd, char * buf, int len)
 
         if(IS_FRAGMENT_ARRIVED(frag->seqId))
         {
-            debug("seqid %d duplicate.\n", frag->seqId);
+            log_print("seqid %d duplicate.", frag->seqId);
             if(server_reply_ack_with_data(fd, 0, frag) <= 0)
             {
                 perror("server_reply_ack_with_data");
@@ -169,7 +170,7 @@ int server_recv(int fd, char * buf, int len)
         else
         {
             const short expectedSeqId = GET_NEXT_SEQID(lastSeqidAck);
-            //debug("CLIENT[%d] seqid = %d, expect = %d, end=%d\n", g_tls_myclientid, frag->seqId, expectedSeqId, frag->end);
+            //log_print("CLIENT[%d] seqid = %d, expect = %d, end=%d\n", g_tls_myclientid, frag->seqId, expectedSeqId, frag->end);
             if(server_reply_ack_with_data(fd, 0, frag) <= 0)
             {
                 perror("server_reply_ack_with_data");
@@ -194,7 +195,7 @@ int server_recv(int fd, char * buf, int len)
             }
             else
             {
-                debug("drop seqid = %d\n", frag->seqId);
+                log_print("drop seqid = %d", frag->seqId);
             }
             freeDataBuffer(data);
         }
@@ -202,7 +203,7 @@ int server_recv(int fd, char * buf, int len)
 
     ret = 0;
 exit_lable:
-    //debug("CLIENT[%d] server_recv: exit.\n", g_tls_myclientid);
+    //log_print("CLIENT[%d] server_recv: exit.", g_tls_myclientid);
     return ret;
 }
 
@@ -217,7 +218,7 @@ int server_send(int fd, const char * p, int len)
         int ret = wait_data(fd, 5);
         if (ret == 0)
         {
-            debug("CLIENT[%d] server_send wait_data timeout\n", g_tls_myclientid);
+            log_print("CLIENT[%d] server_send wait_data timeout", g_tls_myclientid);
             ++ retry;
             continue;
         }
@@ -237,7 +238,7 @@ int server_send(int fd, const char * p, int len)
         frag = (struct FragmentCtrl *)(data->ptr);
         if (ntohs(frag->clientID) != g_tls_myclientid)
         {
-            debug("frage->clientid[%d] != g_tls_myclientid[%d]\n", ntohs(frag->clientID), g_tls_myclientid);
+            log_print("frage->clientid[%d] != g_tls_myclientid[%d]", ntohs(frag->clientID), g_tls_myclientid);
             freeDataBuffer(data);
             continue;
         }
@@ -246,13 +247,13 @@ int server_send(int fd, const char * p, int len)
         int is_hello = isHello(cmd);
         if (!is_hello && !is_session_establish_sync(cmd))
         {
-            debug("server_send: not a hello or session-established msg, code=%d, seqid=%d\n", cmd->code, frag->seqId);
+            log_print("server_send: not a hello or session-established msg, code=%d, seqid=%d", cmd->code, frag->seqId);
             goto ack;
         }
 
         if(is_hello && get_session_state(g_tls_myclientid) == SYNC)
         {
-            debug("CLIENT[%d] set_session_state BUSY.\n", g_tls_myclientid);
+            log_print("CLIENT[%d] set_session_state BUSY.", g_tls_myclientid);
             set_session_state(g_tls_myclientid, BUSY);
         }
 

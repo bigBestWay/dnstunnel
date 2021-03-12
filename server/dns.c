@@ -6,6 +6,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <arpa/inet.h>
+#include "log.h"
 
 /*
 * server使用
@@ -35,7 +36,7 @@ int processQuery(const char * payload, int len, char * out, int outsize)
         int decodeLen = base32_decode((const uint8_t *)tmp, (uint8_t *)out, outsize);        
         if (decodeLen <= 0 || decodeLen <= sizeof(struct FragmentCtrl))//解密失败，有时会发来ntp之类的数据
         {
-            debug("base32_decode %s error.\n", tmp);
+            log_print("base32_decode %s error.", tmp);
             return -1;
         }
         

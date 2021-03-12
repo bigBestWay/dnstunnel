@@ -58,21 +58,6 @@ void delay(long sec, long usec)
     select(0, NULL,NULL, NULL, &t);
 }
 
-void xor(const void * p, int len, unsigned short key)
-{
-    if (len % 2 != 0)
-    {
-        return;
-    }
-    
-    unsigned short * s = (unsigned short *)p;
-    while ((void *)s < p + len)
-    {
-        *s ^= key;
-    }
-    
-}
-
 void dumpHex(const char * buff, int len)
 {
 	for(int i = 0; i < len; ++i)

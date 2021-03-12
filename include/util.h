@@ -18,8 +18,6 @@ void delay(long sec, long usec);
 
 void getRand(void * p, int size);
 
-void xor(const void * p, int len, unsigned short key);
-
 void dumpHex(const char * buff, int len);
 
 int memcpy_s(void *dst, int dstMax, const void *src, int srcLen);

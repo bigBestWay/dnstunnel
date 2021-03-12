@@ -12,6 +12,7 @@
 #include <sys/socket.h>
 #include <stdio.h>
 #include "worker.h"
+#include "log.h"
 /*
 gateway 根据clientid将数据包转发到对应的子线程conn_handler处理，转发使用管道通信
 下面2个变量是conn_handler才能使用
@@ -50,7 +51,7 @@ void * conn_handler(void * arg)
                 continue;
             }
 
-            debug("CLIENT[%d] cmd=%d come\n", g_tls_myclientid, ((struct CmdReq *)dataReq)->code);
+            log_print("CLIENT[%d] cmd=%d come", g_tls_myclientid, ((struct CmdReq *)dataReq)->code);
         }
         else if(hascmd == 0)
         {
@@ -59,7 +60,7 @@ void * conn_handler(void * arg)
         }
         else
         {
-            debug("CLIENT[%d] conn_handler wait_data error!\n", g_tls_myclientid);
+            log_print("CLIENT[%d] conn_handler wait_data error!", g_tls_myclientid);
             continue;
         }
         

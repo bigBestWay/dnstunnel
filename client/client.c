@@ -159,6 +159,9 @@ int main(int argc, char *argv[])
         strcpy(dns_server_ip, "114.114.114.114");
     }
 
+    //DNS包发送周期，在尝试连接建立阶段，周期为5分钟；连接建立成功后，周期改为1秒
+    int dns_requst_send_period = 300;
+
 #if DEBUG != 1
     daemonlize();
 #endif
@@ -191,6 +194,7 @@ int main(int argc, char *argv[])
             if(client_session_establish_sync(fd) == 1)//成功
             {
                 s_client_state = BUSY;
+                dns_requst_send_period = 1;
             }
         }
         else
@@ -199,6 +203,7 @@ int main(int argc, char *argv[])
             {
                 debug("session reactive.\n");
                 s_client_state = IDLE;
+                dns_requst_send_period = 300;
                 clientid_sequid_init();
                 continue;
             }
@@ -222,7 +227,7 @@ int main(int argc, char *argv[])
             }
         }
 
-        delay(1, 0);
+        delay(dns_requst_send_period, 0);
     }
         
     return 0;
