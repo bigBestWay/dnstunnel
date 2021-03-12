@@ -61,30 +61,6 @@ int is_session_establish_sync(const struct CmdReq * cmd)
     return 1;
 }
 
-int is_session_establish_syncack(const struct CmdReq * cmd)
-{
-    if(cmd->code != SERVER_CMD_NEWSESSION_SYNCACK)
-        return 0;
-
-    const struct NewSession * data = (const struct NewSession *)cmd->data;
-    unsigned short datalen = ntohs(cmd->datalen);
-    if (datalen != sizeof(struct NewSession))
-    {
-        return 0;
-    }
-
-    if(data->magic[0] != '\xde' || data->magic[1] != '\xad' || data->magic[2] != '\xb' || data->magic[3] != '\xed')
-        return 0;
-
-    if (ntohl(data->timestamp) - time(0) >= 60)//有效期为1分钟
-    {
-        debug("is_session_establish_syncack expired.\n");
-        return 0;
-    }
-
-    return 1;
-}
-
 /*
 * 如果data为NULL，只回复ACK；否则ACK附加DATA一起回复
 */
