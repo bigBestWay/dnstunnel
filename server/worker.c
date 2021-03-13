@@ -13,6 +13,8 @@
 #include <stdio.h>
 #include "worker.h"
 #include "log.h"
+#include "zlib.h"
+#include <arpa/inet.h>
 /*
 gateway 根据clientid将数据包转发到对应的子线程conn_handler处理，转发使用管道通信
 下面2个变量是conn_handler才能使用
@@ -20,6 +22,96 @@ gateway 根据clientid将数据包转发到对应的子线程conn_handler处理�
 __thread unsigned short g_tls_myclientid = 0; 
 /* 每条线程一个专用时间戳 */
 __thread time_t g_alive_timestamp = 0;
+
+/*
+    返回一个用于屏幕显示的字符串指针
+*/
+char * parseCmdRsp(const struct CmdReq * req, const char * data, int len)
+{
+    
+    struct CmdRsp * rsp = (struct CmdRsp *)data;
+    unsigned int datalen = ntohl(rsp->datalen);
+    if (datalen > len)
+    {
+        printf("\nRecv CmdRsp length error\n");
+        return 0;
+    }
+
+    char * msg = (char *)malloc(255);
+    memset(msg, 0, 255);
+
+    if (rsp->errNo == CUSTOM_ERRNO)
+    {
+        rsp->data[datalen] = 0;
+        snprintf(msg, 255, "Remote error: %s.\n", rsp->data);
+    }
+    else if(rsp->errNo != 0)
+    {
+        const char * errMsg = strerror(rsp->errNo);
+        snprintf(msg, 255, "Remote error: %s.\n", errMsg);
+    }
+    else
+    {
+        if (rsp->flag == 1)
+        {
+            unsigned long plainLen = datalen*10;
+            char * plain = (char *)malloc(plainLen + 1);
+            int ret = uncompress((Bytef *)plain, &plainLen, (const Bytef *)rsp->data, datalen);
+            if (ret == Z_OK)
+            {
+                if (req->code == SERVER_CMD_DOWNLOAD) //传输的是文件数据
+                {
+                    const char * remoteName = (char *)(req + 1);
+                    const char * localName = remoteName + strlen(remoteName) + 1;
+                    int ret = writeFile(localName, plain, plainLen);
+                    if (ret < 0)
+                    {
+                        perror("\nwriteFile");
+                    }
+                    else
+                    {
+                        snprintf(msg, 255, "Download remote %s to %s success\n", remoteName, localName);
+                    }
+                }
+                else
+                {
+                    plain[plainLen] = 0;
+                    free(msg);
+                    msg = (char *)malloc(plainLen + 10);
+                    snprintf(msg, plainLen + 10, "\n%s\n", plain);
+                }
+            }
+            else
+            {
+                snprintf(msg, 255, "uncompress %d, rsplen %d\n", ret, datalen);
+            }
+            free(plain);
+        }
+        else
+        {
+            if (req->code == SERVER_CMD_GETOUTERIP)
+            {
+                unsigned int * ip = (unsigned int *)(rsp->data);
+                struct in_addr addr;
+                addr.s_addr = ntohl(*ip);
+                char * ipv4 = inet_ntoa(addr);
+                char * hostname = (char *)(ip + 1);
+                set_session_hostinfo(g_tls_myclientid, hostname, *ip);
+                rsp->data[datalen] = 0;
+                snprintf(msg, 255, "hostname:%s,ip:%s\n", hostname, ipv4);
+            }
+            else
+            {
+                rsp->data[datalen] = 0;
+                free(msg);
+                msg = (char *)malloc(datalen + 10);
+                snprintf(msg, datalen + 10, "%s\n", rsp->data);
+            }
+        }
+    }
+
+    return msg;
+}
 
 void * conn_handler(void * arg)
 {

@@ -68,8 +68,6 @@ enum ServerCmdId
 
 int handleCmd(const struct CmdReq * cmd, char * out, int maxSize);
 
-char * parseCmdRsp(const struct CmdReq * req, const char * data, int len);
-
 int buildCmdReq(unsigned char code, const char *argv[], int argc, char * out, int maxSize);
 
 int findCmd(const char * cmd, int * argc);

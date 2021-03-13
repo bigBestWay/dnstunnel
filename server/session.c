@@ -13,6 +13,14 @@ static int g_session_number = 0;
 static pthread_rwlock_t g_rwlock = PTHREAD_RWLOCK_INITIALIZER;
 static SessionEntry * g_sessionTable;
 
+void set_session_hostinfo(unsigned short clientid, const char * hostname, unsigned int ip)
+{
+    pthread_rwlock_wrlock(&g_rwlock);
+    strcpy(g_sessionTable[clientid].hostname, hostname);
+    g_sessionTable[clientid].ip = ip;
+    pthread_rwlock_unlock(&g_rwlock);
+}
+
 void set_session_state(unsigned short clientid, int state)
 {
     pthread_rwlock_wrlock(&g_rwlock);

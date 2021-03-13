@@ -33,4 +33,6 @@ int get_cmd_fd(unsigned short clientid);
 
 SessionList live_sessions();
 
+void set_session_hostinfo(unsigned short clientid, const char * hostname, unsigned int ip);
+
 #endif

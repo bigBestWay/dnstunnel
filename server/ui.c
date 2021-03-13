@@ -150,7 +150,7 @@ void startUI()
             fputs("\033[1D", stdout);
         }
         fputs("\033[1D", stdout);
-        
+
         DataBuffer * rspData = 0;
         len = read(cmdfd, &rspData, sizeof(rspData));
         if (len == sizeof(rspData))
