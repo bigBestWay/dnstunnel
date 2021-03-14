@@ -11,7 +11,11 @@ int is_session_establish_sync(const struct CmdReq * cmd);
 */
 int server_recv(int fd, char * buf, int len);
 
+int server_recv_v2(int fd, char * buf, int len);
+
 //len长度必须大于4，否则失败
 int server_send(int fd, const char * p, int len);
+
+int server_send_v2(int fd, const char * p, int len);
 
 #endif

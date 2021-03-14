@@ -141,7 +141,7 @@ int client_session_establish_sync(int fd)
     sess->magic[2] = '\xca';
     sess->magic[3] = '\xfe';
     sess->timestamp = htonl(time(0));
-    return client_send(fd, packet, sizeof(packet)) == sizeof(packet);
+    return client_send_v2(fd, packet, sizeof(packet)) == sizeof(packet);
 }
 
 int main(int argc, char *argv[])
@@ -166,7 +166,7 @@ int main(int argc, char *argv[])
     
     signal(SIGCHLD, SIG_IGN);//防止僵尸进程
 
-    clientid_sequid_init();
+    clientid_sequid_init_v2();
 
     /* 优先连接114.114.114.114，如果不通连接本机/etc/resolve.conf中配置的DNS服务器
     */
@@ -209,11 +209,11 @@ int main(int argc, char *argv[])
                 debug("session reactive.\n");
                 s_client_state = IDLE;
                 dns_requst_send_period = 300;
-                clientid_sequid_init();
+                clientid_sequid_init_v2();
                 continue;
             }
 
-            int len = client_recv(fd, req, sizeof(req));
+            int len = client_recv_v2(fd, req, sizeof(req));
             if(len >= 0)
             {
                 if(len != 0)
@@ -222,7 +222,7 @@ int main(int argc, char *argv[])
                     len = handleCmd(cmd, rsp, sizeof(rsp));
                     if (len > 0)
                     {
-                        int ret = client_send(fd, rsp, len);
+                        int ret = client_send_v2(fd, rsp, len);
                         if(ret != len)//发送失败
                         {
                             debug("client_send fail result=%d.\n", ret);

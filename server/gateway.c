@@ -19,12 +19,12 @@
 
 void start_new_worker(unsigned short clientid);
 
-int reply_ack_now(int fd, const struct FragmentCtrl * frag, char (*addr)[16])
+static int reply_ack_now(int fd, short seqid, char (*addr)[16])
 {
     unsigned int ip = 0;
     char recvBuf[65536];
     struct CmdAckPayload * ack = (struct CmdAckPayload *)&ip;
-    ack->seqid = frag->seqId;
+    ack->seqid = seqid;
     ack->ok[0] = 'O';
     ack->ok[1] = 'K';
 
@@ -73,6 +73,7 @@ void * gateway(void * arg)
             continue;
         }
         
+        //V2兼容
         struct FragmentCtrl * frag = (struct FragmentCtrl *)payload;
         const char fragEndFlag = frag->end;
         const unsigned short clientid = ntohs(frag->clientID);
@@ -133,7 +134,7 @@ void * gateway(void * arg)
             if (is_session_establish_sync(req))
             {
                 log_print("gateway: [[[ session establish sync for cliendid %d ]]].", clientid);
-                if(reply_ack_now(fd, frag, addr) > 0)
+                if(reply_ack_now(fd, frag->seqId, addr) > 0)
                 {
                     start_new_worker(clientid);
                 }

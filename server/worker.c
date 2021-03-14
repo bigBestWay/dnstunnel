@@ -156,7 +156,7 @@ void * conn_handler(void * arg)
             continue;
         }
         
-        int ret = server_send(datafd, dataReq, datalen);
+        int ret = server_send_v2(datafd, dataReq, datalen);
         if(ret < 0)
         {
             perror("server_send");
@@ -169,7 +169,7 @@ void * conn_handler(void * arg)
         if(hascmd)
         {
         recv:
-            ret = server_recv(datafd, dataRsp, sizeof(dataRsp));
+            ret = server_recv_v2(datafd, dataRsp, sizeof(dataRsp));
             if(ret > 0)
             {
                 struct CmdReq * req = (struct CmdReq *)dataReq;

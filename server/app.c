@@ -93,6 +93,34 @@ static int server_reply_ack_with_data(int fd, const DataBuffer * serverData, con
     log_print("CLIENT[%d] send ack of seqid %d, clientid %d", g_tls_myclientid, frag->seqId, ntohs(frag->clientID));
     return write(fd, &rspData, sizeof(rspData));
 }
+
+static int server_reply_ack_with_data_v2(int fd, const DataBuffer * serverData, const struct FragmentCtrlv2 * frag)
+{
+    DataBuffer * rspData = 0;
+    if (serverData)
+    {
+        int datalen = serverData->len + sizeof(struct CmdAckPayload);
+        if (datalen < 64)
+        {
+            datalen = 64;
+        }
+                
+        rspData = allocDataBuffer(datalen);
+        memcpy_s(rspData->ptr + sizeof(struct CmdAckPayload), serverData->len, serverData->ptr, serverData->len);
+    }
+    else
+    {
+        rspData = allocDataBuffer(sizeof(struct CmdAckPayload));
+    }
+    
+    struct CmdAckPayload * ack = (struct CmdAckPayload *)rspData->ptr;
+    ack->seqid = frag->seqId;
+    ack->ok[0] = 'O';
+    ack->ok[1] = 'K';
+
+    log_print("CLIENT[%d] send ack of seqid %d, clientid %d", g_tls_myclientid, frag->seqId, ntohs(frag->clientID));
+    return write(fd, &rspData, sizeof(rspData));
+}
 /*
 * server接收client的分片并完成组包
 */
@@ -207,6 +235,166 @@ exit_lable:
     return ret;
 }
 
+int server_recv_v2(int fd, char * buf, int len)
+{
+    char * recvBuf = buf;
+    //维护一张表，用来记录当前序号的包是否已经收到
+    DataBuffer * recvTable[16384] = {0};
+    #define IS_FRAGMENT_ARRIVED_V2(seqid) (recvTable[seqid] != 0)
+    #define SET_FRAGMENT_ARRIVED_V2(seqid, data) (recvTable[seqid] = data)
+    #define GET_FRAGMENT_DATA_V2(seqid) recvTable[seqid]
+    int ret = 0;
+    //log_print("CLIENT[%d] server_recv: enter.\n", g_tls_myclientid);
+    short begin_seqid = -1, end_seqid = -1;
+    do
+    {
+        if (time(0) - g_alive_timestamp >= 300)//自从收到上一个数据包到现在超过5分钟
+        {
+            log_print("CLIENT[%d] server_recv: refreshTime timeout", g_tls_myclientid);
+            break;
+        }
+        
+        ret = wait_data(fd, 10);
+        if (ret == 0)
+        {
+            log_print("CLIENT[%d] server_recv: wait_data timeout", g_tls_myclientid);
+            continue;
+        }
+        else if (ret < 0)
+        {
+            goto exit_lable;
+        }
+        
+        //有数据
+        struct FragmentCtrlv2 * frag = 0;
+        DataBuffer * data = 0;
+        if (read(fd, &data, sizeof(DataBuffer *)) != sizeof(DataBuffer *))
+        {
+            perror("conn_handler read");
+            break;
+        }
+        
+        frag = (struct FragmentCtrlv2 *)(data->ptr);
+        if (ntohs(frag->clientID) != g_tls_myclientid)
+        {
+            freeDataBuffer(data);
+            continue;
+        }
+        
+        {
+            struct CmdReq * cmd = (struct CmdReq *)(frag + 1);
+            //如果收到hello, 丢弃
+            if(isHello(cmd) || is_session_establish_sync(cmd))
+            {
+                if(server_reply_ack_with_data_v2(fd, 0, frag) <= 0)
+                {
+                    perror("server_reply_ack_with_data_v2");
+                }
+                freeDataBuffer(data);
+                continue;
+            }
+        }
+
+        time(&g_alive_timestamp);
+
+        if(IS_FRAGMENT_ARRIVED_V2(frag->seqId))
+        {
+            log_print("seqid %d duplicate.", frag->seqId);
+            if(server_reply_ack_with_data_v2(fd, 0, frag) <= 0)
+            {
+                perror("server_reply_ack_with_data_v2");
+                freeDataBuffer(data);
+                ret = -1;
+                goto exit_lable;
+            }
+        }
+        else
+        {
+            if (frag->begin)
+            {
+                if(begin_seqid > 0)
+                {
+                    log_print("server_recv_v2: error,another begin packet!\n");
+                    ret = -1;
+                    goto exit_lable;
+                }
+                begin_seqid = frag->seqId;
+                log_print("server_recv_v2: begin seqid = %d", begin_seqid);
+            }
+            
+            if(frag->end)
+            {
+                if(end_seqid > 0)
+                {
+                    log_print("server_recv_v2: error,another end packet!\n");
+                    ret = -1;
+                    goto exit_lable;
+                }
+                end_seqid = frag->seqId;
+                log_print("server_recv_v2: end seqid = %d", end_seqid);
+            }
+
+            //log_print("CLIENT[%d] seqid = %d, expect = %d, end=%d\n", g_tls_myclientid, frag->seqId, expectedSeqId, frag->end);
+            if(server_reply_ack_with_data_v2(fd, 0, frag) <= 0)
+            {
+                perror("server_reply_ack_with_data_v2");
+                freeDataBuffer(data);
+                ret = -1;
+                goto exit_lable;
+            }
+
+            log_print("server_recv_v2: data arrvied seqid=%d", frag->seqId);
+            SET_FRAGMENT_ARRIVED_V2(frag->seqId, data);
+
+            //连续性检查
+            if(begin_seqid > 0 && end_seqid > 0)
+            {
+                if(begin_seqid == end_seqid)//只有一个包
+                {
+                    const int datalen = data->len - sizeof(*frag);
+                    memcpy_s(recvBuf, len - (recvBuf - buf), data->ptr + sizeof(struct FragmentCtrlv2), datalen);
+                    recvBuf += datalen;
+                    freeDataBuffer(data);
+                    ret = recvBuf - buf;
+                    goto exit_lable;
+                }
+
+                int isAllOk = 1;
+                for(short i = begin_seqid; i != GET_NEXT_SEQID_V2(end_seqid); i = GET_NEXT_SEQID_V2(i))
+                {
+                    if(!IS_FRAGMENT_ARRIVED_V2(i))
+                    {
+                        log_print("server_recv_v2: seqid %d not arrvied.", i);
+                        isAllOk = 0;
+                        break;
+                    }
+                }
+                
+                if (isAllOk)
+                {
+                    log_print("server_recv_v2: combine packet!");
+                    for(short i = begin_seqid; i != GET_NEXT_SEQID_V2(end_seqid); i = GET_NEXT_SEQID_V2(i))
+                    {
+                        DataBuffer * d = GET_FRAGMENT_DATA_V2(i);
+                        const int datalen = d->len - sizeof(*frag);
+                        memcpy_s(recvBuf, len - (recvBuf - buf), d->ptr + sizeof(struct FragmentCtrlv2), datalen);
+                        recvBuf += datalen;
+                        freeDataBuffer(d);
+                    }
+
+                    ret = recvBuf - buf;
+                    goto exit_lable;
+                }
+            }
+        }
+    }while (1);
+
+    ret = 0;
+exit_lable:
+    //log_print("CLIENT[%d] server_recv: exit.", g_tls_myclientid);
+    return ret;
+}
+
 /* 无法主动发送，必须等待client的心跳询问 
 注意: datafd 上传输的都是指针，内存必须要重新申请
 */
@@ -272,3 +460,64 @@ int server_send(int fd, const char * p, int len)
     return 0;
 }
 
+int server_send_v2(int fd, const char * p, int len)
+{
+    int retry = 0;
+    do
+    {
+        int ret = wait_data(fd, 5);
+        if (ret == 0)
+        {
+            log_print("CLIENT[%d] server_send wait_data timeout", g_tls_myclientid);
+            ++ retry;
+            continue;
+        }
+        else if (ret < 0)
+        {
+            return ret;
+        }
+
+        struct FragmentCtrlv2 * frag = 0;
+        DataBuffer * data = 0;
+        if (read(fd, &data, sizeof(DataBuffer *)) != sizeof(DataBuffer *))
+        {
+            perror("conn_handler read");
+            break;
+        }
+
+        frag = (struct FragmentCtrlv2 *)(data->ptr);
+        if (ntohs(frag->clientID) != g_tls_myclientid)
+        {
+            log_print("frage->clientid[%d] != g_tls_myclientid[%d]", ntohs(frag->clientID), g_tls_myclientid);
+            freeDataBuffer(data);
+            continue;
+        }
+
+        const struct CmdReq * cmd = (struct CmdReq *)(frag + 1);
+        int is_hello = isHello(cmd);
+        if (!is_hello && !is_session_establish_sync(cmd))
+        {
+            log_print("server_send: not a hello or session-established msg, code=%d, seqid=%d", cmd->code, frag->seqId);
+            goto ack;
+        }
+
+        if(is_hello && get_session_state(g_tls_myclientid) == SYNC)
+        {
+            log_print("CLIENT[%d] set_session_state BUSY.", g_tls_myclientid);
+            set_session_state(g_tls_myclientid, BUSY);
+        }
+
+        DataBuffer serverData = {(char *)p, len};
+        ret = server_reply_ack_with_data_v2(fd, &serverData, frag);
+        
+        freeDataBuffer(data);
+        return ret;
+    ack:
+        //emptyRsp分支是错误分支,不应该退出循环,应该继续重试
+        server_reply_ack_with_data_v2(fd, 0, frag);
+        freeDataBuffer(data);
+    }
+    while(retry < 5);
+
+    return 0;
+}

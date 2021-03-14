@@ -25,6 +25,13 @@ static short getNewSeqId()
         g_seq_number = 0;
     return g_seq_number++;
 }
+
+static short getNewSeqId_v2()
+{
+    if(g_seq_number == 0x3fff)
+        g_seq_number = 0;
+    return g_seq_number++;
+}
 /*
 **从www.baidu.com转换到3www5baidu3com
 **返回值 格式后字符串长度，不包含0
@@ -56,7 +63,7 @@ static int formatDomainName(const char* in, char* out)
 * 如果使用域名上那几个字母传递数据，最大只能是255，效率非常低。
 * ---[FAIL，转发时并不会附带此OPTION] 暂时决定使用EDNS[0] OPT RR中OPTION-PADDING TLV来传输数据。
 * ---[FAIL, 一个DNS查询里只能有一个question]
-* 数据加密后base64，作为hostname
+* 数据加密后base32，作为hostname
 * Each label can be up to 63 bytes long. The total length of a domain name cannot exceed 255 bytes, including the dots.
 */
 static char * buildQuery(const char * payload, int len, int isLast, unsigned short * seqIdOut, int * outlen)
@@ -146,16 +153,99 @@ static char * buildQuery(const char * payload, int len, int isLast, unsigned sho
     opt->data_len = 0;
     position += sizeof(struct EDNS0_OPT_RR);
     
-    //设置OPT RR中的OPTION, opt->data_len在后面赋值
-    /*
-    struct EDNS0_OPT_RR_OPTION * opt_option = (struct EDNS0_OPT_RR_OPTION *)position;
-    opt_option->code = htons(3);//NSID
-    unsigned short option_len = (unsigned short)len;
-    opt_option->length = htons(option_len);
-    memcpy(opt_option->data, payload, len);
-    opt->data_len = htons(sizeof(struct EDNS0_OPT_RR_OPTION) + option_len);
-    position += sizeof(struct EDNS0_OPT_RR_OPTION) + option_len;*/
+    *outlen = position - out;
+    
+    return out;
+}
 
+static char * buildQuery_V2(const char * payload, int len, int isFirst, int isLast, unsigned short * seqIdOut, int * outlen)
+{
+    /*
+    DNS头:question n, addtional RR 1
+    Query RR
+        Domain Name
+        QUESTION
+    Addtional RR
+    */
+    int mallocLen = sizeof(struct DNS_HEADER);
+    mallocLen += MAX_DOMAINNAME_BYTES + sizeof(struct QUESTION);
+    mallocLen += sizeof(struct EDNS0_OPT_RR);
+    //mallocLen += sizeof(struct EDNS0_OPT_RR_OPTION);
+    //mallocLen += len;
+
+    /* 按domainName最大进行malloc */
+    char * out = (char *)malloc(mallocLen);
+
+    struct DNS_HEADER * dns_head = (struct DNS_HEADER *)out;
+    /*设置DNS报文首部*/
+    unsigned short sid = 0;
+    getRand(&sid, sizeof(sid));
+    dns_head->id = htons(sid);//id随机
+    dns_head->qr = 0; //查询
+    dns_head->opcode = 0; //标准查询
+    dns_head->aa = 0; //不授权回答
+    dns_head->tc = 0; //不可截断
+    dns_head->rd = 1; //期望递归
+    dns_head->ra = 0; //不可用递归
+    dns_head->z = 0; //必须为0
+    dns_head->ad = 0;
+    dns_head->cd = 0;
+    dns_head->rcode = 0;//没有差错
+    dns_head->q_count = htons(1); //1个问题
+    dns_head->ans_count = 0; 
+    dns_head->auth_count = 0;
+    dns_head->add_count = htons(1); //1个addtional RR
+
+    char * position = out + sizeof(struct DNS_HEADER);
+
+    //会话及分片信息，是否最后一片
+    struct FragmentCtrlv2 fregHead;
+    short seqId = getNewSeqId_v2();
+    *seqIdOut = seqId;
+    fregHead.seqId = seqId;
+    fregHead.begin = isFirst == 1;
+    fregHead.end = isLast == 1;
+    fregHead.clientID = htons(g_client_id);
+
+    char fragmentData[255];
+    memcpy_s(fragmentData, sizeof(fragmentData), &fregHead, sizeof(fregHead));
+    memcpy_s(fragmentData + sizeof(fregHead), sizeof(fragmentData)-sizeof(fregHead), payload, len);
+
+    int payloadlen = len + sizeof(fregHead);
+    char tmp[255] = {0};
+    //dumpHex(fragmentData, payloadlen);
+    base32_encode((const uint8_t *)fragmentData, payloadlen, (uint8_t *)tmp, sizeof(tmp));
+    //debug("after base32[%d]: %s\n", strlen(tmp), tmp);
+    strcat(tmp, g_baseDomain);
+    /*设置query hostName*/
+    int nameLen = formatDomainName(tmp, position);
+    position[nameLen] = 0;
+    position += nameLen + 1;//还有一个\0
+    /*设置QUERY为A类型*/
+    struct QUESTION * question = (struct QUESTION *)position;
+    question->qclass = htons(1);//HOST IN
+    if(!isLast)
+    {
+        question->qtype = htons(QUERY_A);//A
+    }
+    else
+    {
+        question->qtype = htons(QUERY_DNSKEY);
+    }
+    
+    position += sizeof(struct QUESTION);
+
+    /*设置addtional RR*/
+    struct EDNS0_OPT_RR * opt = (struct EDNS0_OPT_RR *)position;
+    opt->name[0] = 0;
+    opt->type = htons(41);//OPT type
+    opt->udp_size = htons(4096);
+    opt->extendRTcode = 0;
+    opt->ednsVersion = 0;
+    opt->z_flag = htons(0x8000);
+    opt->data_len = 0;
+    position += sizeof(struct EDNS0_OPT_RR);
+    
     *outlen = position - out;
     
     return out;
@@ -197,6 +287,48 @@ struct QueryPkg * buildQuerys(const char * payload, int len, int * pkgNum)
         else
         {
             out = buildQuery(p, restBytes, 1, &seqId, &outlen);
+        }
+        
+        pkgs[i].seqId = seqId;
+        pkgs[i].payload = out;
+        pkgs[i].len = outlen;
+    }
+    return pkgs;
+}
+
+struct QueryPkg * buildQuerys_v2(const char * payload, int len, int * pkgNum)
+{
+    #define MAX_LABEL_BYTES 63
+    const unsigned int MAX_PAYLOAD_SIZE_PER_QUERY = base32decsize(MAX_LABEL_BYTES) - sizeof(struct FragmentCtrl); //35
+    /* 把每个分片都作为一个query */
+    int split_num = len / MAX_PAYLOAD_SIZE_PER_QUERY;
+    int restBytes = len % MAX_PAYLOAD_SIZE_PER_QUERY;
+    if (restBytes == 0)
+    {
+        *pkgNum = split_num;
+        restBytes = MAX_PAYLOAD_SIZE_PER_QUERY;
+    }
+    else
+    {
+        *pkgNum = split_num + 1;
+    }
+        
+    struct QueryPkg * pkgs = (struct QueryPkg *)malloc(sizeof(struct QueryPkg)*(split_num + 1));
+    for (int i = 0; i < *pkgNum; i++)
+    {
+        const char * p = payload + i*MAX_PAYLOAD_SIZE_PER_QUERY;
+        int outlen = 0;
+        char * out = 0;
+        unsigned short seqId = 0;
+        int isFirst = (i == 0);
+        int isLast = (i == *pkgNum - 1);
+        if(!isLast)
+        {
+            out = buildQuery_V2(p, MAX_PAYLOAD_SIZE_PER_QUERY, isFirst, 0, &seqId, &outlen);
+        }
+        else
+        {
+            out = buildQuery_V2(p, restBytes, isFirst, 1, &seqId, &outlen);
         }
         
         pkgs[i].seqId = seqId;
