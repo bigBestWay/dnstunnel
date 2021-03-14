@@ -194,6 +194,3 @@ int buildCmdReq(unsigned char code, const char *argv[], int argc, char * out, in
     return offset + sizeof(*cmd);
 }
 
-
-
-
