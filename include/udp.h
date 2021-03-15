@@ -11,4 +11,7 @@ int udp_recv(int fd, char * buffer, int bufferlen, char (*addr)[16]);
 
 int wait_data(int fd, int timeout);
 
+/* 微秒级延时 */
+int wait_data2(int fd, int tv_usec);
+
 #endif

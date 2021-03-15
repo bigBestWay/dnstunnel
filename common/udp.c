@@ -79,6 +79,31 @@ int wait_data(int fd, int timeout)
     return -1;
 }
 
+int wait_data2(int fd, int tv_usec)
+{
+    struct timeval tv = {0, tv_usec};
+    fd_set readfds;
+
+    FD_ZERO(&readfds);
+    FD_SET(fd, &readfds);
+
+    int ret = select(fd + 1, &readfds, NULL, NULL, &tv);
+    if(ret == 0)//timeout
+    {
+        return 0;
+    }
+    else if (ret < 0)
+    {
+        return -1;
+    }
+    
+    if(FD_ISSET(fd, &readfds))
+    {
+        return 1;
+    }
+    return -1;
+}
+
 int udp_recv(int fd, char * buffer, int bufferlen, char (*addr)[16])
 {
     socklen_t addrlen = sizeof(struct sockaddr_in);

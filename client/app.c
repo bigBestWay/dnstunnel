@@ -53,7 +53,7 @@ ack校验
 如果是ack，返回序号
 如果不是，返回-1
 */
-static int check_ack_v2(const char * payload, int len)
+static short check_ack_v2(const char * payload, int len)
 {
     struct CmdAckPayload * ack = (struct CmdAckPayload *)payload;
     if (ack->ok[0] == 'O' && ack->ok[1] == 'K')
@@ -163,26 +163,63 @@ int client_send_v2(int fd, const char * p, int len)
     ResendEntry * resend_table = (ResendEntry *)malloc(sizeof(ResendEntry)*pkgNum);
     memset(resend_table, 0, sizeof(ResendEntry)*pkgNum);
 
+    const unsigned short seqid_base = pkgs[0].seqId;
+    const unsigned short last_seqid = pkgs[pkgNum-1].seqId;
+
+    #define SLIDE_WINDOW_SIZE 6
+    typedef struct
+    {
+        short low_edge;//滑动窗口下沿
+        short up_edge; //上沿
+        short lastseqid;//顶点序号
+    }SlideWindow;
+
+    #define SLIDEW_INDOW_INIT(seqid_base, last_seqid, size)\
+        short up_edge = seqid_base + size > last_seqid ? last_seqid : seqid_base + size;\
+        SlideWindow sw = {seqid_base, up_edge, last_seqid}
+    //当前是不是窗口下沿
+    #define IS_SW_LOWEDGE(seqid) (sw.low_edge == seqid)
+    //窗口上沿是不是到头了
+    #define GET_SW_LOWEDGE sw.low_edge
+    #define GET_SW_UPEDGE sw.up_edge
+    //滑动一格
+    #define SW_MOVE_UP\
+        ++sw.low_edge;\
+        if(sw.up_edge < sw.lastseqid)\
+            ++sw.up_edge;
+
+
+    SLIDEW_INDOW_INIT(seqid_base, last_seqid, SLIDE_WINDOW_SIZE);
+
     int ret = 0;
     do
     {
         int isAllOk = 1;
-        for (int i = 0; i < pkgNum; i++)
+        for (short seqid = GET_SW_LOWEDGE; seqid <= GET_SW_UPEDGE; seqid++)
         {
             time_t now = time(0);
-            if(!resend_table[i].is_acked)
+            const int index = seqid - seqid_base;
+            if(!resend_table[index].is_acked)
             {
                 isAllOk = 0;
-                if(now - resend_table[i].last_send_timestamp > 5) //5秒没收到ack重发
+                if(now - resend_table[index].last_send_timestamp >= 2) //2秒没收到ack重发
                 {
-                    debug("client_send_v2: resend seqid = %d\n", pkgs[i].seqId);
-                    if(write(fd, pkgs[i].payload, pkgs[i].len) <= 0)
+                    debug("client_send_v2: resend seqid = %d\n", pkgs[index].seqId);
+                    if(write(fd, pkgs[index].payload, pkgs[index].len) <= 0)
                     {
                         perror("write");
                         ret = -1;
                         goto exit_lable;
                     }
-                    resend_table[i].last_send_timestamp = now;
+                    resend_table[index].last_send_timestamp = now;
+                }
+            }
+            else
+            {
+                 //窗口下沿收到ACK, 并且窗口上沿没有到顶. 窗口滑动
+                if(IS_SW_LOWEDGE(seqid))
+                {
+                    SW_MOVE_UP;
                 }
             }
         }
@@ -194,7 +231,8 @@ int client_send_v2(int fd, const char * p, int len)
             goto exit_lable;
         }
 
-        while((ret = wait_data(fd, 0)) == 1)
+        /* 1微秒等于百万分之一秒 */
+        while((ret = wait_data2(fd, 1000)) == 1)
         {
             if(ret == 0)//超时重发
             {
@@ -220,18 +258,20 @@ int client_send_v2(int fd, const char * p, int len)
             char * payload = parseResponse(buffer, recvLen, &payloadLen);
             if (payload)
             {
-                int seqid = check_ack_v2(payload, payloadLen);
+                short seqid = check_ack_v2(payload, payloadLen);
                 //设置对应的ack
-                for (int i = 0; i < pkgNum && seqid != -1; i++)
+                if(seqid != -1)
                 {
-                    if(pkgs[i].seqId == seqid)
+                    debug("get correct ack of %d\n", seqid);
+                    resend_table[seqid - seqid_base].is_acked = 1;
+                    //窗口下沿收到ACK, 并且窗口上沿没有到顶. 窗口滑动
+                    if(IS_SW_LOWEDGE(seqid))
                     {
-                        debug("get correct ack of %d\n", seqid);
-                        resend_table[i].is_acked = 1;
-                        //每次正确收到ACK都刷新时间戳
-                        time(&g_client_timestamp);
-                        break;
+                        SW_MOVE_UP;
                     }
+                    //每次正确收到ACK都刷新时间戳
+                    time(&g_client_timestamp);
+                    break;
                 }
             }
         }
