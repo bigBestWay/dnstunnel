@@ -160,51 +160,59 @@ int client_send_v2(int fd, const char * p, int len)
     
     int pkgNum = 0;
     struct QueryPkg * pkgs = buildQuerys_v2(p, len, &pkgNum);
+    //空间换空间
+    int seq2index[16384];
+    memset(seq2index, -1, sizeof(seq2index));
+    for (int i = 0; i < pkgNum; i++)
+    {
+        seq2index[pkgs[i].seqId] = i;
+    }
+    
     ResendEntry * resend_table = (ResendEntry *)malloc(sizeof(ResendEntry)*pkgNum);
     memset(resend_table, 0, sizeof(ResendEntry)*pkgNum);
-
-    const unsigned short seqid_base = pkgs[0].seqId;
-    const unsigned short last_seqid = pkgs[pkgNum-1].seqId;
 
     #define SLIDE_WINDOW_SIZE 6
     typedef struct
     {
-        short low_edge;//滑动窗口下沿
-        short up_edge; //上沿
-        short lastseqid;//顶点序号
+        short low_edge;//滑动窗口下沿，存储pkgs的下标
+        short up_edge; //上沿, 存储pkgs的下标
     }SlideWindow;
 
-    #define SLIDEW_INDOW_INIT(seqid_base, last_seqid, size)\
-        short up_edge = seqid_base + size > last_seqid ? last_seqid : seqid_base + size;\
-        SlideWindow sw = {seqid_base, up_edge, last_seqid}
+    #define SLIDEW_INDOW_INIT(size)\
+        short up_edge = pkgNum > size ? size - 1: pkgNum - 1;\
+        SlideWindow sw = {0, up_edge}
     //当前是不是窗口下沿
-    #define IS_SW_LOWEDGE(seqid) (sw.low_edge == seqid)
+    #define IS_SW_LOWEDGE(index) (sw.low_edge == index)
     //窗口上沿是不是到头了
     #define GET_SW_LOWEDGE sw.low_edge
     #define GET_SW_UPEDGE sw.up_edge
     //滑动一格
     #define SW_MOVE_UP\
         ++sw.low_edge;\
-        if(sw.up_edge < sw.lastseqid)\
-            ++sw.up_edge;
+        if(sw.up_edge < pkgNum - 1)\
+            ++sw.up_edge;\
+        debug("SLIDEWINOW mov low=%d, up=%d\n", sw.low_edge, sw.up_edge)
 
 
-    SLIDEW_INDOW_INIT(seqid_base, last_seqid, SLIDE_WINDOW_SIZE);
+    SLIDEW_INDOW_INIT(SLIDE_WINDOW_SIZE);
 
     int ret = 0;
     do
     {
-        int isAllOk = 1;
-        for (short seqid = GET_SW_LOWEDGE; seqid <= GET_SW_UPEDGE; seqid++)
+        //滑动窗口
+        while(resend_table[GET_SW_LOWEDGE].is_acked && GET_SW_LOWEDGE != GET_SW_UPEDGE)
+        {
+            SW_MOVE_UP;
+        }
+        
+        for (short index = GET_SW_LOWEDGE; index <= GET_SW_UPEDGE; ++index)
         {
             time_t now = time(0);
-            const int index = seqid - seqid_base;
             if(!resend_table[index].is_acked)
             {
-                isAllOk = 0;
                 if(now - resend_table[index].last_send_timestamp >= 2) //2秒没收到ack重发
                 {
-                    debug("client_send_v2: resend seqid = %d\n", pkgs[index].seqId);
+                    debug("client_send_v2: resend index=%d, seqid = %d\n", index, pkgs[index].seqId);
                     if(write(fd, pkgs[index].payload, pkgs[index].len) <= 0)
                     {
                         perror("write");
@@ -214,17 +222,9 @@ int client_send_v2(int fd, const char * p, int len)
                     resend_table[index].last_send_timestamp = now;
                 }
             }
-            else
-            {
-                 //窗口下沿收到ACK, 并且窗口上沿没有到顶. 窗口滑动
-                if(IS_SW_LOWEDGE(seqid))
-                {
-                    SW_MOVE_UP;
-                }
-            }
         }
 
-        if(isAllOk)
+        if(GET_SW_LOWEDGE >= GET_SW_UPEDGE && resend_table[GET_SW_UPEDGE].is_acked)
         {
             debug("client_send_v2: all packets send ok.\n");
             ret = len;
@@ -263,9 +263,15 @@ int client_send_v2(int fd, const char * p, int len)
                 if(seqid != -1)
                 {
                     debug("get correct ack of %d\n", seqid);
-                    resend_table[seqid - seqid_base].is_acked = 1;
+                    const int index = seq2index[seqid];
+                    if(index < 0)
+                    {
+                        debug("seq2index error!\n");
+                        goto exit_lable;
+                    }
+                    resend_table[index].is_acked = 1;
                     //窗口下沿收到ACK, 并且窗口上沿没有到顶. 窗口滑动
-                    if(IS_SW_LOWEDGE(seqid))
+                    if(IS_SW_LOWEDGE(index))
                     {
                         SW_MOVE_UP;
                     }
