@@ -96,7 +96,7 @@ char * parseCmdRsp(const struct CmdReq * req, const char * data, int len)
                 addr.s_addr = ntohl(*ip);
                 char * ipv4 = inet_ntoa(addr);
                 char * hostname = (char *)(ip + 1);
-                set_session_hostinfo(g_tls_myclientid, hostname, *ip);
+                set_session_hostinfo(g_tls_myclientid, hostname, addr.s_addr);
                 rsp->data[datalen] = 0;
                 snprintf(msg, 255, "hostname:%s,ip:%s\n", hostname, ipv4);
             }
