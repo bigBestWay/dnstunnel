@@ -20,19 +20,21 @@ struct CmdRsp
     unsigned int datalen;
     char data[0];
 };
-#pragma pack(pop)
 
 struct Hello
 {
+    unsigned short key;
     char msg[4]; //固定为HALO
     unsigned int timestamp;
 };
 
 struct NewSession
 {
+    unsigned short key;
     char magic[4];//固定为0xdeadcafe
     unsigned int timestamp;
 };
+#pragma pack(pop)
 
 struct CmdAckPayload
 {
@@ -59,8 +61,6 @@ enum ServerCmdId
     SERVER_CMD_GETOUTERIP,
     SERVER_CMD_REVERSESHELL,
 
-    SERVER_CMD_SESSION_EXIT = 0xfb,
-    SERVER_CMD_NEWSESSION_SYNCACK = 0xfc,
     SERVER_CMD_NEWSESSION_SYNC = 0xfd,
     SERVER_CMD_HELLo = 0xfe,
     SERVER_CMD_END = 0xff

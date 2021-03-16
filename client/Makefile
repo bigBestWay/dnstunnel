@@ -1,7 +1,7 @@
 CPP      = g++
 CC       = gcc
-OBJ      = ../common/base32.o dns.o client.o ../common/util.o ../common/udp.o app.o cmd.o ../common/aes.o
-LINKOBJ  = ../common/base32.o dns.o client.o ../common/util.o ../common/udp.o app.o cmd.o ../common/aes.o /usr/lib/x86_64-linux-gnu/libz.a
+OBJ      = ../common/base32.o dns.o client.o ../common/util.o ../common/udp.o app.o cmd.o 
+LINKOBJ  = ../common/base32.o dns.o client.o ../common/util.o ../common/udp.o app.o cmd.o /usr/lib/x86_64-linux-gnu/libz.a
 LIBS     = 
 INCS     = -I../include
 CXXINCS  = 
@@ -11,7 +11,6 @@ CFLAGS   = $(INCS) -Wall
 ifeq ($(debug),yes)
 CFLAGS   += -g -DDEBUG=1
 endif
-CFLAGS   += -DAESKEY=$(aeskey)
 LDFLAGS  = -static -Wl,--as-needed -Wl,--exclude-libs=ALL
 RM       = rm -f
 
@@ -46,5 +45,3 @@ app.o: app.c
 cmd.o: cmd.c
 	$(CC) -c cmd.c -o cmd.o $(CFLAGS)
 
-aes.o: ../common/aes.c
-	$(CC) -c ../common/aes.c -o ../common/aes.o $(CFLAGS)

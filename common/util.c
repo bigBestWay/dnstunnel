@@ -8,7 +8,6 @@
 #include <stdlib.h>
 #include <stdarg.h>
 #include "../include/util.h"
-#include "../include/aes.h"
 
 int writeFile(const char * path, const char * data, int len)
 {
@@ -106,5 +105,16 @@ void freeDataBuffer(DataBuffer * buffer)
         free(buffer->ptr);
         buffer->ptr = 0;
         free(buffer);
+    }
+}
+
+void xor(void * p, int len, unsigned short key)
+{
+    int len1 = (len/2)*2;
+    unsigned short * s = (unsigned short *)p;
+    while ((void *)s < p + len1)
+    {
+        *s ^= key;
+        s += 1;
     }
 }

@@ -57,21 +57,110 @@ static short check_ack_v2(const char * payload, int len)
 }
 
 /*
+* 可靠发送，成功返回len,超时返回1,错误返回-1
+*/
+static int client_send_reliable(int fd, unsigned short seqid, const char * packet, int len, unsigned short key)
+{
+    char tmp[1024];
+    char * buffer = tmp;
+    int bufferLen = sizeof(tmp);
+    int retry = 0, ret = 0;
+
+    do
+    {
+        debug("client_send_reliable: write packet seqid=%d.\n", seqid);
+        if(write(fd, packet, len) <= 0)
+        {
+            perror("write");
+            return -1;
+        }
+    wait_label:
+        ret = wait_data(fd, 5);//超时时限
+        if(ret == 0)//超时重发
+        {
+            debug("client_send_reliable wait_data timeout.\n");
+            ++ retry;
+            if(retry > 5) //重试5次，超过结束
+                break;
+            continue;
+        }
+        else if (ret == -1)
+        {
+            perror("select");
+            return -1;
+        }
+        
+        int recvLen = read(fd, buffer, bufferLen);
+        if (recvLen <= 0)
+        {
+            perror("read");
+            return -1;
+        }
+        
+        int payloadLen = 0;
+        char * payload = parseResponse(buffer, recvLen, &payloadLen);
+        if (payload) 
+        {
+            xor(payload, payloadLen, key);
+            if(check_ack(seqid, payload, payloadLen) == 1)
+            {
+                debug("get ack of %d\n", seqid);
+                //每次正确收到ACK都刷新时间戳
+                time(&g_client_timestamp);
+                return len;
+            }
+        }
+        
+        goto wait_label;
+    }while(1);
+
+    debug("wait ack timeout %d\n", seqid);
+    return -1;
+}
+
+/*
+可靠发送，成功返回发送成功长度,超时返回0,错误返回-1
+有一个分片没发成功，整个包都没发成功
+*/
+int client_send(int fd, const char * p, int len, unsigned short key)
+{
+    int pkgNum = 0;
+    struct QueryPkg * pkgs = buildQuerys_v2(p, len, &pkgNum);
+    int ret = 0;
+    for (int i = 0; i < pkgNum; i++)
+    {
+        //dumpHex(pkgs[i].payload, pkgs[i].len);
+        ret = client_send_reliable(fd, pkgs[i].seqId, pkgs[i].payload, pkgs[i].len, key); 
+        free(pkgs[i].payload);
+        pkgs[i].payload = 0;
+        if (ret != pkgs[i].len)
+        {
+            return ret;
+        }
+    }
+    free(pkgs);
+
+    return len;
+}
+
+/*
 选择性重传协议
 成功返回发送成功长度,超时返回0,错误返回-1
 有一个分片没发成功，整个包都没发成功
 */
-int client_send_v2(int fd, const char * p, int len)
+int client_send_v2(int fd, const char * p, int len, unsigned short key)
 {
     typedef struct
     {
         int is_acked;
         time_t last_send_timestamp;
     }ResendEntry;
+
+    xor((void *)p, len, key);
     
     int pkgNum = 0;
     struct QueryPkg * pkgs = buildQuerys_v2(p, len, &pkgNum);
-    //空间换空间
+    //空间换时间
     int seq2index[16384];
     memset(seq2index, -1, sizeof(seq2index));
     for (int i = 0; i < pkgNum; i++)
@@ -110,6 +199,11 @@ int client_send_v2(int fd, const char * p, int len)
     int ret = 0;
     do
     {
+        if(time(0) - g_client_timestamp > 30)//超时没收到ack
+        {
+            ret = 0;
+            goto exit_lable;
+        }
         //滑动窗口
         while(resend_table[GET_SW_LOWEDGE].is_acked && GET_SW_LOWEDGE != GET_SW_UPEDGE)
         {
@@ -169,6 +263,7 @@ int client_send_v2(int fd, const char * p, int len)
             char * payload = parseResponse(buffer, recvLen, &payloadLen);
             if (payload)
             {
+                xor(payload, payloadLen, key);
                 short seqid = check_ack_v2(payload, payloadLen);
                 //设置对应的ack
                 if(seqid != -1)
@@ -203,7 +298,7 @@ exit_lable:
 返回值 接收到的数据长度
 0，只接收到ack; > 0, 接收到payload; < 0 超时或错误
 */
-int client_recv_v2(int fd, char * p, int len)
+int client_recv_v2(int fd, char * p, int len, unsigned short key)
 {
     char packet[sizeof(struct CmdReq) + sizeof(struct Hello)];
     struct CmdReq * cmd = (struct CmdReq *)packet;
@@ -215,8 +310,10 @@ int client_recv_v2(int fd, char * p, int len)
     hello->msg[2] = 'L';
     hello->msg[3] = 'O';
     hello->timestamp = htonl(time(0));
-    int ret = -1;
+    hello->key = htons(key);
+    xor(hello->msg, sizeof(struct Hello) - 2, key);
 
+    int ret = -1;
     int pkgNum = 0;
     struct QueryPkg * pkgs = buildQuerys_v2(packet, sizeof(packet), &pkgNum);
     if (pkgNum == 1)
@@ -256,23 +353,27 @@ int client_recv_v2(int fd, char * p, int len)
             
             int outlen = 0;
             char * payload = parseResponse(buffer, recvLen, &outlen);
-            if (payload && check_ack(pkgs[0].seqId, payload, outlen) == 1)
+            if (payload) 
             {
-                if(outlen < sizeof(struct CmdAckPayload))
+                xor(payload, outlen, key);
+                if(check_ack(pkgs[0].seqId, payload, outlen) == 1)
                 {
-                    ret = -1;
+                    if(outlen < sizeof(struct CmdAckPayload))
+                    {
+                        ret = -1;
+                        break;
+                    }
+
+                    debug("got hello ack %d!\n", pkgs[0].seqId);
+                    time(&g_client_timestamp);
+                    ret = outlen - sizeof(struct CmdAckPayload);
+                    if(outlen > sizeof(struct CmdAckPayload))
+                    {
+                        memcpy_s(p, len, payload + sizeof(struct CmdAckPayload), outlen - sizeof(struct CmdAckPayload));
+                    }
+
                     break;
                 }
-
-                debug("got hello ack %d!\n", pkgs[0].seqId);
-                time(&g_client_timestamp);
-                ret = outlen - sizeof(struct CmdAckPayload);
-                if(outlen > sizeof(struct CmdAckPayload))
-                {
-                    memcpy_s(p, len, payload + sizeof(struct CmdAckPayload), outlen - sizeof(struct CmdAckPayload));
-                }
-
-                break;
             }
 
             goto wait_label;

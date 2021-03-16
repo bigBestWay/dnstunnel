@@ -130,7 +130,7 @@ void * gateway(void * arg)
         else 
         {
             //新启动线程，接收到SERVER_CMD_NEWSESSION时
-            const struct CmdReq * req = (struct CmdReq *)(frag + 1);
+            struct CmdReq * req = (struct CmdReq *)(frag + 1);
             if (is_session_establish_sync(req))
             {
                 log_print("gateway: [[[ session establish sync for cliendid %d ]]].", clientid);

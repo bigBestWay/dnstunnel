@@ -15,7 +15,7 @@
 extern __thread unsigned short g_tls_myclientid;
 extern __thread time_t g_alive_timestamp;
 
-int isHello(const struct CmdReq * cmd)
+int isHello(struct CmdReq * cmd)
 {
     if(cmd->code != SERVER_CMD_HELLo)
         return 0;
@@ -26,6 +26,9 @@ int isHello(const struct CmdReq * cmd)
     {
         return 0;
     }
+
+    unsigned short key = key_parse(cmd);
+    xor(cmd->data + 2, datalen - 2, key);
 
     if(hello->msg[0] != 'H' || hello->msg[1] != 'A' || hello->msg[2] != 'L' || hello->msg[3] != 'O')
         return 0;
@@ -39,7 +42,16 @@ int isHello(const struct CmdReq * cmd)
     return 1;
 }
 
-int is_session_establish_sync(const struct CmdReq * cmd)
+unsigned short key_parse(const struct CmdReq * cmd)
+{
+    unsigned short key;
+    memcpy_s(&key, sizeof(key), cmd->data, sizeof(key));
+    key = ntohs(key);
+    //log_print("key_parse: parse xor key=0x%x", key);
+    return key;
+}
+
+int is_session_establish_sync(struct CmdReq * cmd)
 {
     if(cmd->code != SERVER_CMD_NEWSESSION_SYNC)
         return 0;
@@ -50,6 +62,9 @@ int is_session_establish_sync(const struct CmdReq * cmd)
     {
         return 0;
     }
+
+    unsigned short key = key_parse(cmd);
+    xor(cmd->data + 2, datalen - 2, key);
 
     if(data->magic[0] != '\xde' || data->magic[1] != '\xad' || data->magic[2] != '\xca' || data->magic[3] != '\xfe')
         return 0;
@@ -66,7 +81,7 @@ int is_session_establish_sync(const struct CmdReq * cmd)
 /*
 * 如果data为NULL，只回复ACK；否则ACK附加DATA一起回复
 */
-static int server_reply_ack_with_data_v2(int fd, const DataBuffer * serverData, const struct FragmentCtrlv2 * frag)
+static int server_reply_ack_with_data_v2(int fd, const DataBuffer * serverData, const struct FragmentCtrlv2 * frag, unsigned short key)
 {
     DataBuffer * rspData = 0;
     if (serverData)
@@ -90,6 +105,7 @@ static int server_reply_ack_with_data_v2(int fd, const DataBuffer * serverData, 
     ack->ok[0] = 'O';
     ack->ok[1] = 'K';
 
+    xor(rspData->ptr, rspData->len, key);
     log_print("CLIENT[%d] send ack of seqid %d, clientid %d", g_tls_myclientid, frag->seqId, ntohs(frag->clientID));
     return write(fd, &rspData, sizeof(rspData));
 }
@@ -97,7 +113,7 @@ static int server_reply_ack_with_data_v2(int fd, const DataBuffer * serverData, 
 /*
 * server接收client的分片并完成组包
 */
-int server_recv_v2(int fd, char * buf, int len)
+int server_recv_v2(int fd, char * buf, int len, unsigned short key)
 {
     char * recvBuf = buf;
     //维护一张表，用来记录当前序号的包是否已经收到
@@ -146,9 +162,11 @@ int server_recv_v2(int fd, char * buf, int len)
         {
             struct CmdReq * cmd = (struct CmdReq *)(frag + 1);
             //如果收到hello, 丢弃
-            if(isHello(cmd) || is_session_establish_sync(cmd))
+            if((cmd->code == SERVER_CMD_HELLo || cmd->code == SERVER_CMD_NEWSESSION_SYNC)
+                && ntohs(cmd->datalen) == sizeof(struct Hello))//HELLO和NEWSESSION结构大小相同
             {
-                if(server_reply_ack_with_data_v2(fd, 0, frag) <= 0)
+                unsigned short key1 = key_parse(cmd);
+                if(server_reply_ack_with_data_v2(fd, 0, frag, key1) <= 0)
                 {
                     perror("server_reply_ack_with_data_v2");
                 }
@@ -162,7 +180,7 @@ int server_recv_v2(int fd, char * buf, int len)
         if(IS_FRAGMENT_ARRIVED_V2(frag->seqId))
         {
             log_print("seqid %d duplicate.", frag->seqId);
-            if(server_reply_ack_with_data_v2(fd, 0, frag) <= 0)
+            if(server_reply_ack_with_data_v2(fd, 0, frag, key) <= 0)
             {
                 perror("server_reply_ack_with_data_v2");
                 freeDataBuffer(data);
@@ -197,7 +215,7 @@ int server_recv_v2(int fd, char * buf, int len)
             }
 
             //log_print("CLIENT[%d] seqid = %d, expect = %d, end=%d\n", g_tls_myclientid, frag->seqId, expectedSeqId, frag->end);
-            if(server_reply_ack_with_data_v2(fd, 0, frag) <= 0)
+            if(server_reply_ack_with_data_v2(fd, 0, frag, key) <= 0)
             {
                 perror("server_reply_ack_with_data_v2");
                 freeDataBuffer(data);
@@ -218,6 +236,7 @@ int server_recv_v2(int fd, char * buf, int len)
                     recvBuf += datalen;
                     freeDataBuffer(data);
                     ret = recvBuf - buf;
+                    xor(buf, ret, key);
                     goto exit_lable;
                 }
 
@@ -245,6 +264,7 @@ int server_recv_v2(int fd, char * buf, int len)
                     }
 
                     ret = recvBuf - buf;
+                    xor(buf, ret, key);
                     goto exit_lable;
                 }
             }
@@ -260,7 +280,7 @@ exit_lable:
 /* 无法主动发送，必须等待client的心跳询问 
 注意: datafd 上传输的都是指针，内存必须要重新申请
 */
-int server_send_v2(int fd, const char * p, int len)
+int server_send_v2(int fd, const char * p, int len, unsigned short * key)
 {
     int retry = 0;
     do
@@ -293,7 +313,9 @@ int server_send_v2(int fd, const char * p, int len)
             continue;
         }
 
-        const struct CmdReq * cmd = (struct CmdReq *)(frag + 1);
+        struct CmdReq * cmd = (struct CmdReq *)(frag + 1);
+        *key = key_parse(cmd);
+
         int is_hello = isHello(cmd);
         if (!is_hello && !is_session_establish_sync(cmd))
         {
@@ -308,13 +330,13 @@ int server_send_v2(int fd, const char * p, int len)
         }
 
         DataBuffer serverData = {(char *)p, len};
-        ret = server_reply_ack_with_data_v2(fd, &serverData, frag);
+        ret = server_reply_ack_with_data_v2(fd, &serverData, frag, *key);
         
         freeDataBuffer(data);
         return ret;
     ack:
         //emptyRsp分支是错误分支,不应该退出循环,应该继续重试
-        server_reply_ack_with_data_v2(fd, 0, frag);
+        server_reply_ack_with_data_v2(fd, 0, frag, *key);
         freeDataBuffer(data);
     }
     while(retry < 5);

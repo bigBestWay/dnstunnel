@@ -11,7 +11,6 @@
 #include "../include/util.h"
 #include "../include/udp.h"
 #include "../include/cmd.h"
-#include "../include/aes.h"
 
 #define MAXLINE 2048
 
@@ -131,6 +130,10 @@ static SESSION_STATE s_client_state = IDLE;
 */
 int client_session_establish_sync(int fd)
 {
+    unsigned short key = 0;
+    getRand(&key, 2);
+    //debug("client_session_establish_sync: generate xor key=0x%x\n", key);
+
     char packet[sizeof(struct CmdReq) + sizeof(struct NewSession)];
     struct CmdReq * cmd = (struct CmdReq *)packet;
     cmd->code = SERVER_CMD_NEWSESSION_SYNC;
@@ -141,7 +144,9 @@ int client_session_establish_sync(int fd)
     sess->magic[2] = '\xca';
     sess->magic[3] = '\xfe';
     sess->timestamp = htonl(time(0));
-    return client_send_v2(fd, packet, sizeof(packet)) == sizeof(packet);
+    sess->key = htons(key);
+    xor(sess->magic, sizeof(struct NewSession) - 2, key);
+    return client_send(fd, packet, sizeof(packet), key) == sizeof(packet);
 }
 
 int main(int argc, char *argv[])
@@ -187,8 +192,6 @@ int main(int argc, char *argv[])
         return 1;
     }
 
-    time(&g_client_timestamp);
-
     char req[65536];
     char rsp[1024*1024];
     while(1)
@@ -196,6 +199,7 @@ int main(int argc, char *argv[])
         if(s_client_state == IDLE) //空闲状态，发送单独的NEW_SESSION报文
         {
             debug("IDLE state, try establish session...\n");
+            time(&g_client_timestamp);
             if(client_session_establish_sync(fd) == 1)//成功
             {
                 s_client_state = BUSY;
@@ -213,20 +217,21 @@ int main(int argc, char *argv[])
                 continue;
             }
 
-            int len = client_recv_v2(fd, req, sizeof(req));
-            if(len >= 0)
+            unsigned short key = 0;
+            getRand(&key, 2);
+            debug("Generate xor key = 0x%x\n", key);
+
+            int len = client_recv_v2(fd, req, sizeof(req), key);
+            if(len > 0)
             {
-                if(len != 0)
+                struct CmdReq * cmd = (struct CmdReq *)req;
+                len = handleCmd(cmd, rsp, sizeof(rsp));
+                if (len > 0)
                 {
-                    struct CmdReq * cmd = (struct CmdReq *)req;
-                    len = handleCmd(cmd, rsp, sizeof(rsp));
-                    if (len > 0)
+                    int ret = client_send_v2(fd, rsp, len, key);
+                    if(ret != len)//发送失败
                     {
-                        int ret = client_send_v2(fd, rsp, len);
-                        if(ret != len)//发送失败
-                        {
-                            debug("client_send fail result=%d.\n", ret);
-                        }
+                        debug("client_send fail result=%d.\n", ret);
                     }
                 }
             }
