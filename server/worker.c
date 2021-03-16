@@ -28,7 +28,6 @@ __thread time_t g_alive_timestamp = 0;
 */
 char * parseCmdRsp(const struct CmdReq * req, const char * data, int len)
 {
-    
     struct CmdRsp * rsp = (struct CmdRsp *)data;
     unsigned int datalen = ntohl(rsp->datalen);
     if (datalen > len)

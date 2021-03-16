@@ -87,16 +87,6 @@ struct RRSIG_ANSWER_PAYLOAD
     //再接signature
 };
 
-/*
-* 暂时不考虑大小端序问题
-*/
-struct FragmentCtrl
-{
-    unsigned short end:1;
-    unsigned short seqId:15;
-    unsigned short clientID;
-};
-
 struct FragmentCtrlv2
 {
     unsigned short end:1;
@@ -124,7 +114,6 @@ typedef enum
 #define GET_NEXT_SEQID_V2(id) (((short)(id + 1)) == 0x3fff ? 0: ((short)(id + 1)))
 
 /** client 使用 **/
-struct QueryPkg * buildQuerys(const char * payload, int len, int * pkgNum);
 struct QueryPkg * buildQuerys_v2(const char * payload, int len, int * pkgNum);
 int processQuery(const char * payload, int len, char * out, int outsize);
 char * parseResponse(const char * packet, int len, int * outlen);

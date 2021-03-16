@@ -74,7 +74,7 @@ void * gateway(void * arg)
         }
         
         //V2兼容
-        struct FragmentCtrl * frag = (struct FragmentCtrl *)payload;
+        struct FragmentCtrlv2 * frag = (struct FragmentCtrlv2 *)payload;
         const char fragEndFlag = frag->end;
         const unsigned short clientid = ntohs(frag->clientID);
 
