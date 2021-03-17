@@ -155,8 +155,8 @@ void * conn_handler(void * arg)
             continue;
         }
         
-        unsigned short key = 0;
-        int ret = server_send_v2(datafd, dataReq, datalen, &key);
+        unsigned char key[2];
+        int ret = server_send_v2(datafd, dataReq, datalen, key);
         if(ret < 0)
         {
             perror("server_send");

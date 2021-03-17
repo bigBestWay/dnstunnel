@@ -27,7 +27,7 @@ int isHello(struct CmdReq * cmd)
         return 0;
     }
 
-    unsigned short key = key_parse(cmd);
+    unsigned char key[2] = {cmd->data[0], cmd->data[1]};
     xor(cmd->data + 2, datalen - 2, key);
 
     if(hello->msg[0] != 'H' || hello->msg[1] != 'A' || hello->msg[2] != 'L' || hello->msg[3] != 'O')
@@ -42,15 +42,6 @@ int isHello(struct CmdReq * cmd)
     return 1;
 }
 
-unsigned short key_parse(const struct CmdReq * cmd)
-{
-    unsigned short key;
-    memcpy_s(&key, sizeof(key), cmd->data, sizeof(key));
-    key = ntohs(key);
-    //log_print("key_parse: parse xor key=0x%x", key);
-    return key;
-}
-
 int is_session_establish_sync(struct CmdReq * cmd)
 {
     if(cmd->code != SERVER_CMD_NEWSESSION_SYNC)
@@ -63,7 +54,7 @@ int is_session_establish_sync(struct CmdReq * cmd)
         return 0;
     }
 
-    unsigned short key = key_parse(cmd);
+    unsigned char key[2] = {cmd->data[0], cmd->data[1]};
     xor(cmd->data + 2, datalen - 2, key);
 
     if(data->magic[0] != '\xde' || data->magic[1] != '\xad' || data->magic[2] != '\xca' || data->magic[3] != '\xfe')
@@ -81,7 +72,7 @@ int is_session_establish_sync(struct CmdReq * cmd)
 /*
 * 如果data为NULL，只回复ACK；否则ACK附加DATA一起回复
 */
-static int server_reply_ack_with_data_v2(int fd, const DataBuffer * serverData, const struct FragmentCtrlv2 * frag, unsigned short key)
+static int server_reply_ack_with_data_v2(int fd, const DataBuffer * serverData, const struct FragmentCtrlv2 * frag, unsigned char * key)
 {
     DataBuffer * rspData = 0;
     if (serverData)
@@ -102,19 +93,19 @@ static int server_reply_ack_with_data_v2(int fd, const DataBuffer * serverData, 
     }
     
     struct CmdAckPayload * ack = (struct CmdAckPayload *)rspData->ptr;
-    ack->seqid = frag->seqId;
+    ack->seqid = htons(frag->seqId);
     ack->ok[0] = 'O';
     ack->ok[1] = 'K';
 
     xor(rspData->ptr, rspData->len, key);
-    log_print("CLIENT[%d] send ack of seqid %d, clientid %d", g_tls_myclientid, frag->seqId, ntohs(frag->clientID));
+    log_print("CLIENT[%d] send ack of seqid %d, clientid %d", g_tls_myclientid, frag->seqId, frag->clientID);
     return write(fd, &rspData, sizeof(rspData));
 }
 
 /*
 * server接收client的分片并完成组包
 */
-int server_recv_v2(int fd, char * buf, int len, unsigned short key)
+int server_recv_v2(int fd, char * buf, int len, unsigned char * key)
 {
     char * recvBuf = buf;
     //维护一张表，用来记录当前序号的包是否已经收到
@@ -154,7 +145,7 @@ int server_recv_v2(int fd, char * buf, int len, unsigned short key)
         }
         
         frag = (struct FragmentCtrlv2 *)(data->ptr);
-        if (ntohs(frag->clientID) != g_tls_myclientid)
+        if (frag->clientID != g_tls_myclientid)
         {
             freeDataBuffer(data);
             continue;
@@ -165,7 +156,8 @@ int server_recv_v2(int fd, char * buf, int len, unsigned short key)
             //如果收到hello, 丢弃
             if(isHello(cmd) || is_session_establish_sync(cmd))
             {
-                if(server_reply_ack_with_data_v2(fd, 0, frag, key_parse(cmd)) <= 0)
+                unsigned char key[2] = {cmd->data[0], cmd->data[1]};
+                if(server_reply_ack_with_data_v2(fd, 0, frag, key) <= 0)
                 {
                     perror("server_reply_ack_with_data_v2");
                 }
@@ -279,7 +271,7 @@ exit_lable:
 /* 无法主动发送，必须等待client的心跳询问 
 注意: datafd 上传输的都是指针，内存必须要重新申请
 */
-int server_send_v2(int fd, const char * p, int len, unsigned short * key)
+int server_send_v2(int fd, const char * p, int len, unsigned char * key)
 {
     int retry = 0;
     do
@@ -305,15 +297,16 @@ int server_send_v2(int fd, const char * p, int len, unsigned short * key)
         }
 
         frag = (struct FragmentCtrlv2 *)(data->ptr);
-        if (ntohs(frag->clientID) != g_tls_myclientid)
+        if (frag->clientID != g_tls_myclientid)
         {
-            log_print("frage->clientid[%d] != g_tls_myclientid[%d]", ntohs(frag->clientID), g_tls_myclientid);
+            log_print("frage->clientid[%d] != g_tls_myclientid[%d]", frag->clientID, g_tls_myclientid);
             freeDataBuffer(data);
             continue;
         }
 
         struct CmdReq * cmd = (struct CmdReq *)(frag + 1);
-        *key = key_parse(cmd);
+        key[0] = cmd->data[0];
+        key[1] = cmd->data[1];
 
         int is_hello = isHello(cmd);
         if (!is_hello && !is_session_establish_sync(cmd))
@@ -329,13 +322,13 @@ int server_send_v2(int fd, const char * p, int len, unsigned short * key)
         }
 
         DataBuffer serverData = {(char *)p, len};
-        ret = server_reply_ack_with_data_v2(fd, &serverData, frag, *key);
+        ret = server_reply_ack_with_data_v2(fd, &serverData, frag, key);
         
         freeDataBuffer(data);
         return ret;
     ack:
         //emptyRsp分支是错误分支,不应该退出循环,应该继续重试
-        server_reply_ack_with_data_v2(fd, 0, frag, *key);
+        server_reply_ack_with_data_v2(fd, 0, frag, key);
         freeDataBuffer(data);
     }
     while(retry < 5);

@@ -28,7 +28,7 @@ int writeFile(const char * path, const char * data, int len);
 
 int readFile(const char * path, char * out, int len);
 
-void xor(void * p, int len, unsigned short key);
+void xor(void * p, int len, unsigned char * key);
 
 DataBuffer * allocDataBuffer(int len);
 

@@ -130,9 +130,9 @@ static SESSION_STATE s_client_state = IDLE;
 */
 int client_session_establish_sync(int fd)
 {
-    unsigned short key = 0;
+    unsigned char key[2];
     getRand(&key, 2);
-    //debug("client_session_establish_sync: generate xor key=0x%x\n", key);
+    debug("client_session_establish_sync: generate xor key=0x%02x%02x\n", key[0], key[1]);
 
     char packet[sizeof(struct CmdReq) + sizeof(struct NewSession)];
     struct CmdReq * cmd = (struct CmdReq *)packet;
@@ -144,7 +144,8 @@ int client_session_establish_sync(int fd)
     sess->magic[2] = '\xca';
     sess->magic[3] = '\xfe';
     sess->timestamp = htonl(time(0));
-    sess->key = htons(key);
+    sess->key[0] = key[0];
+    sess->key[1] = key[1];
     xor(sess->magic, sizeof(struct NewSession) - 2, key);
     return client_send(fd, packet, sizeof(packet), key) == sizeof(packet);
 }
@@ -217,7 +218,7 @@ int main(int argc, char *argv[])
                 continue;
             }
 
-            unsigned short key = 0;
+            unsigned char key[2];
             getRand(&key, 2);
 
             int len = client_recv_v2(fd, req, sizeof(req), key);

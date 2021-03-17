@@ -5,7 +5,7 @@
 struct CmdReq
 {
     unsigned char code; //命令码
-    unsigned short sid; //会话id，一次输入输出称为一次会话
+    unsigned short sid; //会话id，一次输入输出称为一次会话，此字段不需要关注字节序
     unsigned short datalen;
     char data[0];
 };
@@ -16,21 +16,21 @@ struct CmdRsp
 {
     unsigned char flag; //0x1 压缩
     unsigned char errNo;//linux标准errno,如果为0xff表示自定义错误
-    unsigned short sid;
+    unsigned short sid; //此字段不需要关注字节序，直接复制req中sid
     unsigned int datalen;
     char data[0];
 };
 
 struct Hello
 {
-    unsigned short key;
+    unsigned char key[2];
     char msg[4]; //固定为HALO
     unsigned int timestamp;
 };
 
 struct NewSession
 {
-    unsigned short key;
+    unsigned char key[2];
     char magic[4];//固定为0xdeadcafe
     unsigned int timestamp;
 };

@@ -31,6 +31,7 @@ ack校验
 static int check_ack(unsigned short seqId, const char * payload, int len)
 {
     struct CmdAckPayload * ack = (struct CmdAckPayload *)payload;
+    ack->seqid = ntohs(ack->seqid);
     if (ack->ok[0] == 'O' && ack->ok[1] == 'K')
     {
         if(seqId == ack->seqid)
@@ -51,7 +52,7 @@ static short check_ack_v2(const char * payload, int len)
     if (ack->ok[0] == 'O' && ack->ok[1] == 'K')
     {
         debug("check_ack_v2: seqid %d, ok[0]=%c, ok[1]=%c\n", ack->seqid, ack->ok[0], ack->ok[1]);
-        return ack->seqid;
+        return ntohs(ack->seqid);
     }
     return -1;
 }
@@ -59,7 +60,7 @@ static short check_ack_v2(const char * payload, int len)
 /*
 * 可靠发送，成功返回len,超时返回1,错误返回-1
 */
-static int client_send_reliable(int fd, unsigned short seqid, const char * packet, int len, unsigned short key)
+static int client_send_reliable(int fd, unsigned short seqid, const char * packet, int len, unsigned char * key)
 {
     char tmp[1024];
     char * buffer = tmp;
@@ -123,7 +124,7 @@ static int client_send_reliable(int fd, unsigned short seqid, const char * packe
 可靠发送，成功返回发送成功长度,超时返回0,错误返回-1
 有一个分片没发成功，整个包都没发成功
 */
-int client_send(int fd, const char * p, int len, unsigned short key)
+int client_send(int fd, const char * p, int len, unsigned char * key)
 {
     int pkgNum = 0;
     struct QueryPkg * pkgs = buildQuerys_v2(p, len, &pkgNum);
@@ -149,7 +150,7 @@ int client_send(int fd, const char * p, int len, unsigned short key)
 成功返回发送成功长度,超时返回0,错误返回-1
 有一个分片没发成功，整个包都没发成功
 */
-int client_send_v2(int fd, const char * p, int len, unsigned short key)
+int client_send_v2(int fd, const char * p, int len, unsigned char * key)
 {
     typedef struct
     {
@@ -299,7 +300,7 @@ exit_lable:
 返回值 接收到的数据长度
 0，只接收到ack; > 0, 接收到payload; < 0 超时或错误
 */
-int client_recv_v2(int fd, char * p, int len, unsigned short key)
+int client_recv_v2(int fd, char * p, int len, unsigned char * key)
 {
     char packet[sizeof(struct CmdReq) + sizeof(struct Hello)];
     struct CmdReq * cmd = (struct CmdReq *)packet;
@@ -311,7 +312,8 @@ int client_recv_v2(int fd, char * p, int len, unsigned short key)
     hello->msg[2] = 'L';
     hello->msg[3] = 'O';
     hello->timestamp = htonl(time(0));
-    hello->key = htons(key);
+    hello->key[0] = key[0];
+    hello->key[1] = key[1];
     xor(hello->msg, sizeof(struct Hello) - 2, key);
 
     int ret = -1;

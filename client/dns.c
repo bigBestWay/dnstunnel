@@ -51,6 +51,13 @@ static int formatDomainName(const char* in, char* out)
     return num_offset + count + 1;
 }
 
+static void encodeFragmentCtrlv2(struct FragmentCtrlv2 * frag)
+{
+    unsigned short * v = (unsigned short *)frag;
+    *v = htons(*v);
+    frag->clientID = htons(frag->clientID);
+}
+
 /*
 * client使用
 * 如果使用域名上那几个字母传递数据，最大只能是255，效率非常低。
@@ -106,7 +113,9 @@ static char * buildQuery_V2(const char * payload, int len, int isFirst, int isLa
     fregHead.seqId = seqId;
     fregHead.begin = isFirst == 1;
     fregHead.end = isLast == 1;
-    fregHead.clientID = htons(g_client_id);
+    fregHead.clientID = g_client_id;
+
+    encodeFragmentCtrlv2(&fregHead);
 
     char fragmentData[255];
     memcpy_s(fragmentData, sizeof(fragmentData), &fregHead, sizeof(fregHead));

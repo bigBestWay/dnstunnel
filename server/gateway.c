@@ -24,7 +24,7 @@ static int reply_ack_now(int fd, short seqid, char (*addr)[16])
     unsigned int ip = 0;
     char recvBuf[65536];
     struct CmdAckPayload * ack = (struct CmdAckPayload *)&ip;
-    ack->seqid = seqid;
+    ack->seqid = htons(seqid);
     ack->ok[0] = 'O';
     ack->ok[1] = 'K';
 
@@ -32,6 +32,13 @@ static int reply_ack_now(int fd, short seqid, char (*addr)[16])
     int outlen = 0;
     out = buildResponseA(recvBuf, sizeof(recvBuf), &ip, &outlen);
     return udp_send(fd, out, outlen, addr);
+}
+
+static void decodeFragmentCtrlv2(struct FragmentCtrlv2 * frag)
+{
+    unsigned short * v = (unsigned short *)frag;
+    *v = ntohs(*v);
+    frag->clientID = ntohs(frag->clientID);
 }
 
 void * gateway(void * arg)
@@ -75,8 +82,9 @@ void * gateway(void * arg)
         
         //V2兼容
         struct FragmentCtrlv2 * frag = (struct FragmentCtrlv2 *)payload;
+        decodeFragmentCtrlv2(frag);
         const char fragEndFlag = frag->end;
-        const unsigned short clientid = ntohs(frag->clientID);
+        const unsigned short clientid = frag->clientID;
 
         DataBuffer * data = (DataBuffer *)malloc(sizeof(DataBuffer));
         data->ptr = payload;

@@ -108,13 +108,15 @@ void freeDataBuffer(DataBuffer * buffer)
     }
 }
 
-void xor(void * p, int len, unsigned short key)
+//大小端不兼容
+void xor(void * p, int len, unsigned char * key)
 {
-    int len1 = (len/2)*2;
-    unsigned short * s = (unsigned short *)p;
-    while ((void *)s < p + len1)
+    unsigned char * s = (unsigned char *)p;
+    for (int i = 0; i < len; i++)
     {
-        *s ^= key;
-        s += 1;
+        if(i % 2 == 0)
+            s[i] ^= key[0];
+        else
+            s[i] ^= key[1];
     }
 }
