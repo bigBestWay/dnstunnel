@@ -127,7 +127,7 @@ void * conn_handler(void * arg)
     {
         if (time(0) - g_alive_timestamp > 20)//超过1分钟没消息，退出线程
         {
-            printf("session[%d] timeout\n", g_tls_myclientid);
+            printf("\nsession[%d] timeout\n", g_tls_myclientid);
             break;
         }
         

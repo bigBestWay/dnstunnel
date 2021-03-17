@@ -93,6 +93,7 @@ static int server_reply_ack_with_data_v2(int fd, const DataBuffer * serverData, 
         }
                 
         rspData = allocDataBuffer(datalen);
+        getRand(rspData->ptr, rspData->len);
         memcpy_s(rspData->ptr + sizeof(struct CmdAckPayload), serverData->len, serverData->ptr, serverData->len);
     }
     else
@@ -162,11 +163,9 @@ int server_recv_v2(int fd, char * buf, int len, unsigned short key)
         {
             struct CmdReq * cmd = (struct CmdReq *)(frag + 1);
             //如果收到hello, 丢弃
-            if((cmd->code == SERVER_CMD_HELLo || cmd->code == SERVER_CMD_NEWSESSION_SYNC)
-                && ntohs(cmd->datalen) == sizeof(struct Hello))//HELLO和NEWSESSION结构大小相同
+            if(isHello(cmd) || is_session_establish_sync(cmd))
             {
-                unsigned short key1 = key_parse(cmd);
-                if(server_reply_ack_with_data_v2(fd, 0, frag, key1) <= 0)
+                if(server_reply_ack_with_data_v2(fd, 0, frag, key_parse(cmd)) <= 0)
                 {
                     perror("server_reply_ack_with_data_v2");
                 }

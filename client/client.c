@@ -219,7 +219,6 @@ int main(int argc, char *argv[])
 
             unsigned short key = 0;
             getRand(&key, 2);
-            debug("Generate xor key = 0x%x\n", key);
 
             int len = client_recv_v2(fd, req, sizeof(req), key);
             if(len > 0)

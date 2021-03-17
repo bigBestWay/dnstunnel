@@ -119,6 +119,7 @@ static int client_send_reliable(int fd, unsigned short seqid, const char * packe
 }
 
 /*
+该函数专用来发送不加密的报文，比如SESSION_SYNC
 可靠发送，成功返回发送成功长度,超时返回0,错误返回-1
 有一个分片没发成功，整个包都没发成功
 */
