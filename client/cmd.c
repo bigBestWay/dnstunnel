@@ -66,7 +66,7 @@ int handleCmd(const struct CmdReq * cmd, char * out, int maxSize)
         int payloadLen = handle(cmd->data, datalen, rsp->data, maxSize - sizeof(*rsp));
         if (payloadLen > 0 && s_errno == 0)
         {
-            if (handle == process_list || handle == process_download)//对数据进行压缩
+            if (handle == process_list || handle == process_download || handle == process_shellcmd)//对数据进行压缩
             {
                 char * plain = (char *)malloc(payloadLen);
                 memcpy_s(plain, payloadLen, rsp->data, payloadLen);
