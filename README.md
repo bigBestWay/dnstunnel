@@ -1,7 +1,12 @@
 # dnstunnel
-一款多会话的二进制DNS隧道远控，一个服务端可以连接多个客户端（暂未做充分测试，欢迎提issue）。DNS通道传输能力非常有限，速率比较低，传输大量的字节需要很长时间。  
-
-交互设计:  
+一款LINUX下的支持多会话的二进制DNS隧道远控，一个服务端可以连接多个客户端（暂未做充分测试，欢迎提issue）。
+# 说明
+DNS通道传输能力非常有限，速率比较低，传输大量的字节需要很长时间。支持PowerPC、ARM、MIPSeb、MIPSel、x86、x86_64等各平台gcc编译使用，交叉编译时注意要先静态编译好zlib(https://github.com/madler/zlib)，然后修改Makefile这一行libz.a的位置：
+```
+LINKOBJ  = ../common/base32.o log.o ui.o dns.o server.o ../common/util.o ../common/udp.o app.o gateway.o worker.o cmd.o session.o /usr/lib/x86_64-linux-gnu/libz.a
+```
+客户端默认是静态链接的，是为了防止glibc版本不兼容，有需要可以改成动态链接以减小体积。
+## 交互设计
 ![avatar](https://raw.githubusercontent.com/bigBestWay/dnstunnel/master/flow.jpg)
 
 协议更新前后效果对比： 
