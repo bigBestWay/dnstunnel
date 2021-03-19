@@ -118,7 +118,7 @@ int server_recv_v2(int fd, char * buf, int len, unsigned char * key)
     short begin_seqid = -1, end_seqid = -1;
     do
     {
-        if (time(0) - g_alive_timestamp >= 300)//自从收到上一个数据包到现在超过5分钟
+        if (time(0) - g_alive_timestamp >= 20)//统一为20s
         {
             log_print("CLIENT[%d] server_recv: refreshTime timeout", g_tls_myclientid);
             break;
