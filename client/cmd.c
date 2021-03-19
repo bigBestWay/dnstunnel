@@ -333,7 +333,7 @@ int process_getouterip(const void * in, int len, char * out, int maxSize)
     if(gethostname(hostname, maxSize - sizeof(*ip)) == 0)
     {
         s_errno = 0;
-        return sizeof(*ip) + strlen(hostname);
+        return sizeof(*ip) + strlen(hostname) + 1;//字符串结尾的0
     }
     s_errno = errno;
     return 0;
