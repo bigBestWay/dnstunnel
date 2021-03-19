@@ -16,7 +16,7 @@ static SessionEntry * g_sessionTable;
 void set_session_hostinfo(unsigned short clientid, const char * hostname, unsigned int ip)
 {
     pthread_rwlock_wrlock(&g_rwlock);
-    strcpy(g_sessionTable[clientid].hostname, hostname);
+    strcpy_s(g_sessionTable[clientid].hostname, 255, hostname);
     g_sessionTable[clientid].ip = ip;
     pthread_rwlock_unlock(&g_rwlock);
 }
