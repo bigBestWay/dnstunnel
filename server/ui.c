@@ -120,8 +120,7 @@ void startUI()
             }
             continue;
         }
-        
-        
+                
         unsigned char code = result;
         int len = buildCmdReq(code, argv, argc1, buffer, sizeof(buffer));
         if (len <= 0)
@@ -140,6 +139,12 @@ void startUI()
         if (len <=0 )
         {
             perror("UI write");
+            continue;
+        }
+
+        if(code == SERVER_CMD_SAFEEXIT)
+        {
+            //无回显
             continue;
         }
 

