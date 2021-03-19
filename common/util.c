@@ -87,6 +87,7 @@ int strcpy_s(void *dst, int dstMax, const void *src)
         return -1;
     }
     strcpy(dst, src);
+    ((char *)dst)[srclen] = 0;
     return srclen + 1;    
 }
 
