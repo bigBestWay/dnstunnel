@@ -22,6 +22,8 @@ gateway 根据clientid将数据包转发到对应的子线程conn_handler处理�
 __thread unsigned short g_tls_myclientid = 0; 
 /* 每条线程一个专用时间戳 */
 __thread time_t g_alive_timestamp = 0;
+/* 超时阈值，可通过命令设置 */
+__thread time_t g_conn_tmout_threshold = 30;
 
 /*
     返回一个用于屏幕显示的字符串指针
@@ -125,7 +127,7 @@ void * conn_handler(void * arg)
     g_alive_timestamp = time(0);
     while (1)
     {
-        if (time(0) - g_alive_timestamp > 20)//超过1分钟没消息，退出线程
+        if (time(0) - g_alive_timestamp > g_conn_tmout_threshold)//超时没消息，退出线程
         {
             printf("\nsession[%d] timeout\n", g_tls_myclientid);
             break;

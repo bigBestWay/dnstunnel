@@ -14,6 +14,7 @@
 
 extern __thread unsigned short g_tls_myclientid;
 extern __thread time_t g_alive_timestamp;
+extern __thread time_t g_conn_tmout_threshold;
 
 int isHello(struct CmdReq * cmd)
 {
@@ -118,7 +119,7 @@ int server_recv_v2(int fd, char * buf, int len, unsigned char * key)
     short begin_seqid = -1, end_seqid = -1;
     do
     {
-        if (time(0) - g_alive_timestamp >= 20)//统一为20s
+        if (time(0) - g_alive_timestamp >= g_conn_tmout_threshold)//统一为30s
         {
             log_print("CLIENT[%d] server_recv: refreshTime timeout", g_tls_myclientid);
             break;
