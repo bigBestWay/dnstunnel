@@ -68,6 +68,14 @@ session list
 session clientid
 ```
 切换到对应会话  
+```
+session timeout
+```
+查询当前会话的超时时间，默认30秒
+```
+session timeout 20
+```
+设置当前会话的超时时间
 ## getuid  
 ```
 getuid
