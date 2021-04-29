@@ -23,7 +23,7 @@ __thread unsigned short g_tls_myclientid = 0;
 /* 每条线程一个专用时间戳 */
 __thread time_t g_alive_timestamp = 0;
 /* 超时阈值，可通过命令设置 */
-__thread time_t g_conn_tmout_threshold = 30;
+__thread int g_conn_tmout_threshold = 30;
 
 /*
     返回一个用于屏幕显示的字符串指针
@@ -144,7 +144,43 @@ void * conn_handler(void * arg)
                 continue;
             }
 
-            log_print("CLIENT[%d] cmd=%d come", g_tls_myclientid, ((struct CmdReq *)dataReq)->code);
+            struct CmdReq * req = (struct CmdReq *)dataReq;
+            log_print("CLIENT[%d] cmd=%d come", g_tls_myclientid, req->code);
+            if(req->code == INNER_CMD_QUERY_SESSION_TM)
+            {
+                char * buff = malloc(255);
+                snprintf(buff, 255, "%d", g_conn_tmout_threshold);
+                DataBuffer * data = (DataBuffer *)malloc(sizeof(DataBuffer));
+                data->ptr = buff;
+                data->len = strlen(data->ptr) + 1;
+                if(write(cmdfd, &data, sizeof(data)) != sizeof(data))
+                {
+                    perror("parseCmdRsp write:");
+                }
+                continue;
+            }
+            else if(req->code == INNER_CMD_SET_SESSION_TM)
+            {
+                char * p_tm = req->data + strlen(req->data) + 1;
+                int tm = atoi(p_tm);
+                if(tm <= 0)
+                {
+                    char * buff = malloc(255);
+                    strcpy_s(buff, 255, "invalid tm value");
+                    DataBuffer * data = (DataBuffer *)malloc(sizeof(DataBuffer));
+                    data->ptr = buff;
+                    data->len = strlen(data->ptr) + 1;
+                    if(write(cmdfd, &data, sizeof(data)) != sizeof(data))
+                    {
+                        perror("parseCmdRsp write:");
+                    }
+                }
+                else
+                {
+                    g_conn_tmout_threshold = tm;
+                }
+                continue;
+            }
         }
         else if(hascmd == 0)
         {

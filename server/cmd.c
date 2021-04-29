@@ -12,28 +12,13 @@
 #include "zlib.h"
 #include <arpa/inet.h>
 
-/*
-    process_getuid, //SERVER_CMD_GETUID
-    process_upload, //SERVER_CMD_UPLOAD
-    process_download,//SERVER_CMD_DOWNLOAD
-    process_shellcmd,//SERVER_CMD_SHELL
-    process_move,//SERVER_CMD_MOVE
-    process_mkdir,//SERVER_CMD_MKDIR
-    process_del_dir,//SERVER_CMD_DELDIR
-    process_rename,//SERVER_CMD_RENAME
-    process_list,//SERVER_CMD_LIST
-    process_del_file,//SERVER_CMD_DELFILE
-    process_chdir, //SERVER_CMD_CHDIR
-    process_getcwd,//SERVER_CMD_GETCWD
-    SERVER_CMD_GETOUTERIP
-*/
 
 static struct
 {
     const char * cmd;
     const char * argv[5];
 }g_cmdUsageTable[] = {
-    {"session", {"<list|clientid>", 0, 0, 0, 0}},
+    {"session", {"<list|clientid|timeout>", 0, 0, 0, 0}},
     {"getuid", {0, 0, 0, 0, 0}},
     {"upload", {"<local>", "<remote>", 0, 0, 0}},
     {"download", {"<remote>", "<local>", 0, 0, 0}},

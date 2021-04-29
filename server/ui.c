@@ -112,13 +112,25 @@ void startUI()
                     char * ipv4 = inet_ntoa(addr);
                     printf(fmt, sessionList.list[i]->clientid, ipv4, sessionList.list[i]->hostname);
                 }
+                continue;
+            }
+            else if(strcmp(argv[1], "timeout") == 0)
+            {
+                if(argc1 == 2)//查询
+                {
+                    result = INNER_CMD_QUERY_SESSION_TM;
+                }
+                else if(argc1 == 3)
+                {
+                    result = INNER_CMD_SET_SESSION_TM;
+                }
             }
             else
             {
                 int arg = atoi(argv[1]);
                 currentSession = arg;
+                continue;
             }
-            continue;
         }
                 
         unsigned char code = result;
