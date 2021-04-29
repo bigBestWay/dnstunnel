@@ -149,7 +149,7 @@ void * conn_handler(void * arg)
             if(req->code == INNER_CMD_QUERY_SESSION_TM)
             {
                 char * buff = malloc(255);
-                snprintf(buff, 255, "%d", g_conn_tmout_threshold);
+                snprintf(buff, 255, "%d\n", g_conn_tmout_threshold);
                 DataBuffer * data = (DataBuffer *)malloc(sizeof(DataBuffer));
                 data->ptr = buff;
                 data->len = strlen(data->ptr) + 1;
@@ -166,7 +166,7 @@ void * conn_handler(void * arg)
                 if(tm <= 0)
                 {
                     char * buff = malloc(255);
-                    strcpy_s(buff, 255, "invalid tm value");
+                    strcpy_s(buff, 255, "invalid tm value\n");
                     DataBuffer * data = (DataBuffer *)malloc(sizeof(DataBuffer));
                     data->ptr = buff;
                     data->len = strlen(data->ptr) + 1;
