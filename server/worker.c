@@ -163,21 +163,22 @@ void * conn_handler(void * arg)
             {
                 char * p_tm = req->data + strlen(req->data) + 1;
                 int tm = atoi(p_tm);
+                char * buff = malloc(255);
                 if(tm <= 0)
                 {
-                    char * buff = malloc(255);
                     strcpy_s(buff, 255, "invalid tm value\n");
-                    DataBuffer * data = (DataBuffer *)malloc(sizeof(DataBuffer));
-                    data->ptr = buff;
-                    data->len = strlen(data->ptr) + 1;
-                    if(write(cmdfd, &data, sizeof(data)) != sizeof(data))
-                    {
-                        perror("parseCmdRsp write:");
-                    }
                 }
                 else
                 {
                     g_conn_tmout_threshold = tm;
+                    strcpy_s(buff, 255, "Success\n");
+                }
+                DataBuffer * data = (DataBuffer *)malloc(sizeof(DataBuffer));
+                data->ptr = buff;
+                data->len = strlen(data->ptr) + 1;
+                if(write(cmdfd, &data, sizeof(data)) != sizeof(data))
+                {
+                    perror("parseCmdRsp write:");
                 }
                 continue;
             }
