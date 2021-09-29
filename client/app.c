@@ -180,7 +180,7 @@ int client_send_v2(int fd, const char * p, int len, unsigned char * key)
         short up_edge; //上沿, 存储pkgs的下标
     }SlideWindow;
 
-    #define SLIDEW_INDOW_INIT(size)\
+    #define SLIDE_WINDOW_INIT(size)\
         short up_edge = pkgNum > size ? size - 1: pkgNum - 1;\
         SlideWindow sw = {0, up_edge}
     //当前是不是窗口下沿
@@ -196,7 +196,7 @@ int client_send_v2(int fd, const char * p, int len, unsigned char * key)
         debug("SLIDEWINOW mov low=%d, up=%d\n", sw.low_edge, sw.up_edge)
 
 
-    SLIDEW_INDOW_INIT(SLIDE_WINDOW_SIZE);
+    SLIDE_WINDOW_INIT(SLIDE_WINDOW_SIZE);
 
     int ret = 0;
     do
